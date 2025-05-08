@@ -3,14 +3,14 @@ import { AppModule } from './app.module';
 import { WinstonModule } from 'nest-winston';
 import { loggerConfig } from './config/logger.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
-import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    logger: WinstonModule.createLogger(loggerConfig),
-  });
+  const logger = WinstonModule.createLogger(loggerConfig);
 
-  const logger = new Logger('Bootstrap');
+  const app = await NestFactory.create(AppModule, {
+    logger,
+    bufferLogs: true,
+  });
 
   // Apply global error filter
   app.useGlobalFilters(new GlobalExceptionFilter());

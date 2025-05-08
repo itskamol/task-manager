@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ApplicationError } from '../errors/application-error';
+import { ZodError } from 'zod';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -23,11 +24,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let code: string = 'INTERNAL_SERVER_ERROR';
     let details: unknown = undefined;
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof ZodError) {
+      status = HttpStatus.BAD_REQUEST;
+      message = 'Validation failed';
+      code = 'VALIDATION_ERROR';
+      details = exception.issues;
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const responseBody = exception.getResponse();
-      message =
-        typeof responseBody === 'string' ? responseBody : exception.message;
+      message = typeof responseBody === 'string' ? responseBody : exception.message;
     } else if (exception instanceof ApplicationError) {
       status = exception.statusCode;
       message = exception.message;
@@ -40,14 +45,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message,
       code,
       details,
-      timestamp: new Date().toISOString(),
       path: request.url,
     };
 
-    this.logger.error(`${request.method} ${request.url}`, {
-      error: exception,
-      ...errorResponse,
-    });
+    // Only log non-validation errors at error level
+    const logLevel = exception instanceof ZodError ? 'warn' : 'error';
+    this.logger[logLevel](`${request.method} ${request.url}`, errorResponse);
 
     response.status(status).json(errorResponse);
   }

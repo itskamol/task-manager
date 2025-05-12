@@ -13,38 +13,40 @@ model User {
   firstName   String?
   lastName    String?
   username    String?
-  timezone    String   @default("UTC")
+  phoneNumber String?  @unique
+  timezone    String   @default("Asia/Tashkent")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   tasks       Task[]
 }
 
 model Task {
-  id             String    @id @default(uuid())
-  userId         String
-  title          String
-  description    String?
-  status         Status    @default(PENDING)
-  priority       Priority  @default(MEDIUM)
-  deadline       DateTime?
-  repeat         Repeat    @default(NONE)
-  estimatedTime  Int?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  userId        String
+  title         String
+  description   String?
+  status        Status    @default(PENDING)
+  priority      Priority  @default(MEDIUM)
+  deadline      DateTime?
+  timezone      String    @default("Asia/Tashkent")
+  repeat        Repeat    @default(NONE)
+  estimatedTime Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  user           User      @relation(fields: [userId], references: [id])
-  reminders      Reminder[]
+  user      User       @relation(fields: [userId], references: [id])
+  reminders Reminder[]
 }
 
 model Reminder {
-  id         String    @id @default(uuid())
-  taskId     String
-  remindAt   DateTime
-  isSent     Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  taskId    String
+  remindAt  DateTime
+  isSent    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  task       Task      @relation(fields: [taskId], references: [id])
+  task Task @relation(fields: [taskId], references: [id])
 }
 
 enum Status {

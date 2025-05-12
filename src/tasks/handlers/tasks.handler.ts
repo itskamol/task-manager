@@ -6,6 +6,7 @@ import { Priority, Repeat, Status } from '@prisma/client';
 import { AiService } from '../../ai/ai.service';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { formatInUserTz } from '../utils/time.utils';
 
 @Injectable()
 export class TasksHandler {
@@ -44,17 +45,26 @@ export class TasksHandler {
                 timezone,
             };
 
-            const task = await this.tasksService.createTask(String(ctx.from.id), taskDto);
+            // Convert deadline to Date if it exists
+            if (taskDto.deadline) {
+                taskDto.deadline = new Date(taskDto.deadline).toISOString();
+            }
+
+            const task = await this.tasksService.createTask(user?.id || '', {
+                ...taskDto,
+                deadline: taskDto.deadline ? new Date(taskDto.deadline) : undefined,
+            });
 
             // Get AI-suggested deadline
             const suggestedDeadline = this.aiService.suggestDeadline(task);
             if (suggestedDeadline) {
-                await this.tasksService.updateTask(task.id, String(ctx.from.id), {
+                const updatedTask = await this.tasksService.updateTask(task.id, user?.id || '', {
                     deadline: suggestedDeadline,
                 });
+                task.deadline = updatedTask.deadline;
             }
 
-            const formattedDeadline = this.tasksService.formatTaskDeadline(task);
+            const formattedDeadline = formatInUserTz(task.deadline, timezone);
             const deadlineText = formattedDeadline
                 ? `\nDeadline: ${formattedDeadline} (${timezone})`
                 : '';
@@ -91,14 +101,18 @@ export class TasksHandler {
             // Use AI to optimize task order
             const optimizedTasks = await this.aiService.optimizeSchedule(tasks);
 
+            // Get user timezone
+            const user = await this.prisma.user.findUnique({
+                where: { telegramId: BigInt(ctx.from.id) },
+            });
+            const timezone = user?.timezone || 'Asia/Tashkent';
+
             const taskList = optimizedTasks
                 .map((task) => {
                     const status = task.status === Status.DONE ? '✅' : '⏳';
                     const priority = this.getPriorityEmoji(task.priority);
-                    const deadline = this.tasksService.formatTaskDeadline(task);
-                    const deadlineText = deadline
-                        ? `\nDeadline: ${deadline} (${task.timezone})`
-                        : '';
+                    const deadline = formatInUserTz(task.deadline, timezone);
+                    const deadlineText = deadline ? `\nDeadline: ${deadline} (${timezone})` : '';
                     const estimatedTime = task.estimatedTime
                         ? `\nEstimated: ${task.estimatedTime} minutes`
                         : '';

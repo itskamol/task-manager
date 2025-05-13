@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { BotLoggerService } from './bot-logger.service';
+import { BotLoggerService } from './services/bot-logger.service';
 
 @Global()
 @Module({

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { Context, InlineKeyboard, Keyboard } from 'grammy';
 import { BotLoggerService } from './bot-logger.service';
 

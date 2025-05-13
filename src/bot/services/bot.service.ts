@@ -1,11 +1,11 @@
 import { Injectable, OnModuleInit, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, Context } from 'grammy';
+import { Bot } from 'grammy';
 import { BotLoggerService } from './bot-logger.service';
-import { StartHandler } from './handlers/start.handler';
-import { ContactHandler } from './handlers/contact.handler';
-import { TasksHandler } from '../tasks/handlers/tasks.handler';
-import { BotCommand } from '../common/types/bot.types';
+import { StartHandler } from '../handlers/start.handler';
+import { ContactHandler } from '../handlers/contact.handler';
+import { TasksHandler } from '../../tasks/handlers/tasks.handler';
+import { BotCommand } from '../../common/types/bot.types';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnApplicationShutdown {

@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Context } from 'grammy';
 import { TasksService } from '../tasks.service';
-import { BotLoggerService } from '../../bot/bot-logger.service';
-import { Priority, Repeat, Status } from '@prisma/client';
+import { Priority, Status } from '@prisma/client';
 import { AiService } from '../../ai/ai.service';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { formatInUserTz } from '../utils/time.utils';
+import { BotLoggerService } from 'src/bot/services/bot-logger.service';
 
 @Injectable()
 export class TasksHandler {

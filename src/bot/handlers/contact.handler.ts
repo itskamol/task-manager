@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Context, Keyboard } from 'grammy';
-import { BotLoggerService } from '../bot-logger.service';
-import { AuthService } from '../auth.service';
+import { Context } from 'grammy';
+import { AuthService } from '../services/auth.service';
+import { BotLoggerService } from '../services/bot-logger.service';
 
 @Injectable()
 export class ContactHandler {

@@ -128,7 +128,7 @@ export class AuthService {
             return user;
         } catch (error) {
             // Log the error but don't expose details to the caller unless necessary
-            this.logger.error('Failed to fetch user by Telegram ID', error, { telegramId });
+            this.logger.botError(undefined, error as Error);
             return null; // Or throw a custom application error
         }
     }

@@ -3,7 +3,9 @@ import { Bot } from 'grammy';
 import { BotCommand } from '../../common/types/bot.types';
 import { StartHandler } from '../handlers/start.handler';
 import { ContactHandler } from '../handlers/contact.handler';
+import { HelpHandler } from '../handlers/help.handler';
 import { TasksHandler } from '../../tasks/handlers/tasks.handler';
+import { ReportsHandler } from '../../reports/handlers/reports.handler';
 import { BotLoggerService } from './bot-logger.service';
 
 @Injectable()
@@ -14,7 +16,9 @@ export class BotCommandRegistryService {
         private readonly logger: BotLoggerService,
         private readonly startHandler: StartHandler,
         private readonly contactHandler: ContactHandler,
+        private readonly helpHandler: HelpHandler,
         private readonly tasksHandler: TasksHandler,
+        private readonly reportsHandler: ReportsHandler,
     ) {
         this.commands = this.setupCommands();
     }
@@ -40,6 +44,56 @@ export class BotCommandRegistryService {
                 command: 'list',
                 description: 'List all your tasks',
                 handler: (ctx) => this.tasksHandler.handleListTasks(ctx),
+            },
+            {
+                command: 'daily_report',
+                description: 'Get daily productivity report',
+                handler: (ctx) => this.reportsHandler.handleDailyReport(ctx),
+            },
+            {
+                command: 'weekly_report',
+                description: 'Get weekly productivity report',
+                handler: (ctx) => this.reportsHandler.handleWeeklyReport(ctx),
+            },
+            {
+                command: 'monthly_report',
+                description: 'Get monthly productivity report',
+                handler: (ctx) => this.reportsHandler.handleMonthlyReport(ctx),
+            },
+            {
+                command: 'quarterly_report',
+                description: 'Get quarterly productivity report',
+                handler: (ctx) => this.reportsHandler.handleQuarterlyReport(ctx),
+            },
+            {
+                command: 'yearly_report',
+                description: 'Get yearly productivity report',
+                handler: (ctx) => this.reportsHandler.handleYearlyReport(ctx),
+            },
+            {
+                command: 'analytics',
+                description: 'Get personal analytics',
+                handler: (ctx) => this.reportsHandler.handleAnalytics(ctx),
+            },
+            {
+                command: 'trend',
+                description: 'Get productivity trend',
+                handler: (ctx) => this.reportsHandler.handleProductivityTrend(ctx),
+            },
+            {
+                command: 'help',
+                description: 'Get help and usage instructions',
+                handler: (ctx) => this.helpHandler.handle(ctx),
+            },
+            {
+                command: 'task_help',
+                description: 'Get detailed help for task management',
+                handler: (ctx) => this.helpHandler.handleTaskHelp(ctx),
+            },
+            {
+                command: 'report_help',
+                description: 'Get detailed help for reports',
+                handler: (ctx) => this.helpHandler.handleReportHelp(ctx),
             },
         ];
     }

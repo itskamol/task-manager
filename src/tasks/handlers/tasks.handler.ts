@@ -2,20 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { Context } from 'grammy';
 import { TasksService } from '../tasks.service';
 import { Priority, Status } from '@prisma/client';
-// AiService is no longer needed here
-// CreateTaskDto is no longer needed here as TasksService.createTaskWithAISuggestions takes raw inputs
-// PrismaService is no longer needed here
 import { formatInUserTz } from '../utils/time.utils';
-import { BotLoggerService } from '../../bot/services/bot-logger.service'; // Corrected path
-import { AuthService } from '../../bot/services/auth.service'; // Import AuthService
-import { AiService } from '../../ai/ai.service'; // Still needed for optimizeSchedule in handleListTasks
+import { BotLoggerService } from '../../bot/services/bot-logger.service';
+import { AiService } from '../../ai/ai.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class TasksHandler {
     constructor(
         private readonly tasksService: TasksService,
         private readonly logger: BotLoggerService,
-        private readonly authService: AuthService, // Inject AuthService
+        private readonly prisma: PrismaService, // Keep PrismaService for direct user access
         private readonly aiService: AiService, // Keep AiService for handleListTasks
     ) {}
 
@@ -29,9 +26,13 @@ export class TasksHandler {
         }
 
         try {
-            const user = await this.authService.getUser(BigInt(ctx.from.id));
+            // Get user from database directly
+            const user = await this.prisma.user.findUnique({
+                where: { telegramId: BigInt(ctx.from.id) },
+            });
+
             if (!user) {
-                await ctx.reply('Could not find your user information. Please try /start again.');
+                await ctx.reply('Please register first using /start command.');
                 return;
             }
 
@@ -68,12 +69,16 @@ export class TasksHandler {
         if (!ctx.from?.id) return;
 
         try {
-            const user = await this.authService.getUser(BigInt(ctx.from.id));
+            // Get user from database directly
+            const user = await this.prisma.user.findUnique({
+                where: { telegramId: BigInt(ctx.from.id) },
+            });
+
             if (!user) {
-                await ctx.reply('Could not find your user information. Please try /start again.');
+                await ctx.reply("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.");
                 return;
             }
-            
+
             const tasks = await this.tasksService.getUserTasks(user.id);
 
             if (tasks.length === 0) {
@@ -82,9 +87,8 @@ export class TasksHandler {
             }
 
             // Use AI to optimize task order
-            // AiService is still needed here for optimizeSchedule
             const optimizedTasks = await this.aiService.optimizeSchedule(tasks);
-            
+
             const userTimezone = user.timezone;
 
             const taskList = optimizedTasks
@@ -92,7 +96,9 @@ export class TasksHandler {
                     const status = task.status === Status.DONE ? '✅' : '⏳';
                     const priority = this.getPriorityEmoji(task.priority);
                     const deadline = formatInUserTz(task.deadline, userTimezone);
-                    const deadlineText = deadline ? `\nDeadline: ${deadline} (${userTimezone})` : '';
+                    const deadlineText = deadline
+                        ? `\nDeadline: ${deadline} (${userTimezone})`
+                        : '';
                     const estimatedTime = task.estimatedTime
                         ? `\nEstimated: ${task.estimatedTime} minutes`
                         : '';

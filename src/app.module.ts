@@ -7,6 +7,7 @@ import { WinstonModule } from 'nest-winston';
 import { loggerConfig } from './config/logger.config';
 import { LoggerModule } from './common/services/logger.module';
 import { TasksModule } from './tasks/tasks.module';
+import { ReportsModule } from './reports/reports.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { AiModule } from './ai/ai.module';
 import { BotLoggerModule } from './bot/bot-logger.module';
@@ -23,6 +24,7 @@ import { BotLoggerModule } from './bot/bot-logger.module';
         PrismaModule,
         BotModule,
         TasksModule,
+        ReportsModule,
         SchedulerModule,
         AiModule,
     ],

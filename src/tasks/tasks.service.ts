@@ -18,8 +18,8 @@ export class TasksService {
         userTimezone: string, // Already part of task model, but good for context
     ): Promise<Task> {
         // 1. Get AI suggestions for priority and estimated time
-        const priority = this.aiService.analyzePriority(taskText);
-        const estimatedTime = this.aiService.estimateTaskDuration(taskText);
+        const priority = await this.aiService.analyzePriority(taskText);
+        const estimatedTime = await this.aiService.estimateTaskDuration(taskText);
 
         // 2. Create the initial task
         let task = await this.createTask(userId, {
@@ -35,7 +35,7 @@ export class TasksService {
         });
 
         // 3. Get AI-suggested deadline for the created task
-        const suggestedDeadline = this.aiService.suggestDeadline(task);
+        const suggestedDeadline = await this.aiService.suggestDeadline(task);
 
         // 4. If a deadline is suggested, update the task
         if (suggestedDeadline) {
@@ -56,6 +56,7 @@ export class TasksService {
             deadline?: Date;
             repeat?: Repeat;
             estimatedTime?: number;
+            timezone?: string; // Add timezone property
         },
     ): Promise<Task> {
         const task = await this.prisma.task.create({

@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { LoggerService } from '../common/services/logger.service';
 import { Priority, Task } from '@prisma/client';
+import * as moment from 'moment-timezone';
 
 /**
  * Enhanced AI Service with Gemini API Integration
@@ -20,7 +21,7 @@ import { Priority, Task } from '@prisma/client';
 @Injectable()
 export class AiService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel;
 
     constructor(
         private readonly logger: LoggerService,
@@ -32,7 +33,7 @@ export class AiService {
         }
 
         this.genAI = new GoogleGenerativeAI(apiKey);
-        this.model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
+        this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     }
 
     async analyzePriority(title: string, description?: string): Promise<Priority> {
@@ -68,20 +69,75 @@ export class AiService {
     }
 
     private fallbackAnalyzePriority(title: string, description?: string): Priority {
-        const importantKeywords = ['urgent', 'asap', 'emergency', 'deadline', 'critical'];
-        const mediumKeywords = ['important', 'needed', 'required', 'soon'];
-
         const text = `${title} ${description || ''}`.toLowerCase();
 
-        if (importantKeywords.some((keyword) => text.includes(keyword))) {
+        // Enhanced keyword lists with more comprehensive detection
+        const urgentKeywords = [
+            'urgent',
+            'asap',
+            'emergency',
+            'deadline',
+            'critical',
+            'immediate',
+            'shoshilinch',
+            'zudlik bilan',
+            'tezkor',
+            'muhim',
+            'zarur',
+        ];
+
+        const importantKeywords = [
+            'important',
+            'needed',
+            'required',
+            'soon',
+            'priority',
+            'necessary',
+            'kerak',
+            'lozim',
+            'zarur',
+            'muhim',
+            'ahamiyatli',
+        ];
+
+        const lowPriorityKeywords = [
+            'later',
+            'eventually',
+            'when possible',
+            'sometime',
+            'routine',
+            'keyinroq',
+            "imkon bo'lganda",
+            'oddiy',
+            'muntazam',
+        ];
+
+        // Check for explicit priority mentions
+        if (/high|yuqori|baland/i.test(text)) return Priority.HIGH;
+        if (/medium|o'rta|o'rtacha/i.test(text)) return Priority.MEDIUM;
+        if (/low|past|oddiy/i.test(text)) return Priority.LOW;
+
+        // Check urgent keywords first
+        if (urgentKeywords.some((keyword) => text.includes(keyword))) {
             return Priority.HIGH;
         }
 
-        if (mediumKeywords.some((keyword) => text.includes(keyword))) {
+        // Check low priority keywords
+        if (lowPriorityKeywords.some((keyword) => text.includes(keyword))) {
+            return Priority.LOW;
+        }
+
+        // Check important keywords
+        if (importantKeywords.some((keyword) => text.includes(keyword))) {
             return Priority.MEDIUM;
         }
 
-        return Priority.LOW;
+        // Default based on length and context
+        if (text.length < 10) {
+            return Priority.LOW; // Short tasks are usually simple
+        }
+
+        return Priority.MEDIUM; // Default to medium priority
     }
 
     async suggestDeadline(task: Task): Promise<Date | null> {
@@ -112,13 +168,17 @@ export class AiService {
             const result = await this.model.generateContent(prompt);
             const response = result.response.text().trim();
             const hours = parseInt(response);
-
+            console.log(`AI suggested deadline in hours: ${hours}`);
             if (isNaN(hours) || hours <= 0) {
                 return this.fallbackSuggestDeadline(task);
             }
 
-            const deadline = new Date();
-            deadline.setHours(deadline.getHours() + hours);
+            // Use task timezone for deadline calculation
+            const taskTimezone = task.timezone || 'Asia/Tashkent';
+            const deadline = moment().tz(taskTimezone).add(hours, 'hours').toDate();
+            console.log(
+                `Calculated deadline: ${deadline.toISOString()} for timezone: ${taskTimezone}`,
+            );
             return deadline;
         } catch (error) {
             this.logger.error('Failed to suggest deadline with AI, using fallback', error);
@@ -127,21 +187,20 @@ export class AiService {
     }
 
     private fallbackSuggestDeadline(task: Task): Date | null {
+        const taskTimezone = task.timezone || 'Asia/Tashkent';
+
         if (task.priority === Priority.HIGH) {
-            const deadline = new Date();
-            deadline.setHours(deadline.getHours() + 24);
-            return deadline;
+            // High priority: 24 hours from now
+            return moment().tz(taskTimezone).add(24, 'hours').toDate();
         }
 
         if (task.priority === Priority.MEDIUM) {
-            const deadline = new Date();
-            deadline.setDate(deadline.getDate() + 3);
-            return deadline;
+            // Medium priority: 3 days from now
+            return moment().tz(taskTimezone).add(3, 'days').toDate();
         }
 
-        const deadline = new Date();
-        deadline.setDate(deadline.getDate() + 7);
-        return deadline;
+        // Low priority: 1 week from now
+        return moment().tz(taskTimezone).add(1, 'week').toDate();
     }
 
     async estimateTaskDuration(title: string, description?: string): Promise<number | null> {
@@ -197,83 +256,102 @@ export class AiService {
 
     async optimizeSchedule(tasks: Task[]): Promise<Task[]> {
         try {
-            const tasksData = tasks.map((task) => ({
-                id: task.id,
-                title: task.title,
-                priority: task.priority,
-                deadline: task.deadline?.toISOString(),
-                estimatedTime: task.estimatedTime,
-                status: task.status,
-                createdAt: task.createdAt.toISOString(),
-            }));
+            if (tasks.length === 0) {
+                return tasks;
+            }
 
             const prompt = `
-                Task Schedule Optimization:
-                
-                Tasks to optimize:
-                ${JSON.stringify(tasksData, null, 2)}
-                
-                Please optimize the order of these tasks based on:
-                1. Priority (HIGH > MEDIUM > LOW)
-                2. Deadlines (earlier deadlines first)
-                3. Estimated time (shorter tasks can be done first if same priority)
-                4. Task dependencies and logical flow
-                
-                Respond with ONLY a JSON array of task IDs in the optimized order.
-                Example: ["task-id-1", "task-id-2", "task-id-3"]
-            `;
+            Analyze these tasks and suggest the optimal order for completion.
+            Consider priority, deadlines, and estimated time.
+            
+            Tasks:
+            ${tasks
+                .map(
+                    (task) =>
+                        `- ID: ${task.id}, Title: ${task.title}, Priority: ${task.priority}, 
+                 Deadline: ${task.deadline || 'No deadline'}, 
+                 Estimated: ${task.estimatedTime || 'Unknown'} minutes`,
+                )
+                .join('\n')}
+            
+            Return ONLY a valid JSON array with the task IDs in optimal order.
+            Example: ["task-id-1", "task-id-2", "task-id-3"]
+            
+            Do not include any markdown formatting or explanations.
+        `;
 
             const result = await this.model.generateContent(prompt);
             const response = result.response.text().trim();
 
-            // Try to parse the JSON response
-            const optimizedOrder = JSON.parse(response);
+            // Clean up response by removing markdown code blocks
+            const cleanedResponse = this.cleanJsonResponse(response);
 
-            if (Array.isArray(optimizedOrder)) {
-                // Reorder tasks based on AI response
-                const orderedTasks: Task[] = [];
-                const taskMap = new Map(tasks.map((task) => [task.id, task]));
+            try {
+                const optimizedIds = JSON.parse(cleanedResponse);
 
-                // Add tasks in AI-suggested order
-                optimizedOrder.forEach((taskId) => {
-                    const task = taskMap.get(taskId);
-                    if (task) {
-                        orderedTasks.push(task);
-                        taskMap.delete(taskId);
-                    }
+                if (!Array.isArray(optimizedIds)) {
+                    throw new Error('Response is not an array');
+                }
+
+                // Reorder tasks based on AI suggestion
+                const orderedTasks = optimizedIds
+                    .map((id) => tasks.find((task) => task.id === id))
+                    .filter((task) => task !== undefined) as Task[];
+
+                // Add any tasks that weren't in the AI response
+                const remainingTasks = tasks.filter((task) => !optimizedIds.includes(task.id));
+
+                return [...orderedTasks, ...remainingTasks];
+            } catch (parseError) {
+                this.logger.warn('Failed to parse AI schedule optimization response', {
+                    response: cleanedResponse,
+                    error: parseError,
                 });
-
-                // Add any remaining tasks
-                taskMap.forEach((task) => orderedTasks.push(task));
-
-                return orderedTasks;
+                return this.fallbackScheduleOptimization(tasks);
             }
-
-            return this.fallbackOptimizeSchedule(tasks);
         } catch (error) {
             this.logger.error('Failed to optimize schedule with AI, using fallback', error);
-            return this.fallbackOptimizeSchedule(tasks);
+            return this.fallbackScheduleOptimization(tasks);
         }
     }
 
-    private fallbackOptimizeSchedule(tasks: Task[]): Task[] {
+    private cleanJsonResponse(response: string): string {
+        // Remove markdown code block syntax
+        let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+        // Remove any leading/trailing whitespace
+        cleaned = cleaned.trim();
+
+        // If response starts and ends with quotes, remove them
+        if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+            cleaned = cleaned.slice(1, -1);
+        }
+
+        return cleaned;
+    }
+
+    private fallbackScheduleOptimization(tasks: Task[]): Task[] {
+        // Simple fallback: sort by priority and deadline
         return tasks.sort((a, b) => {
-            if (a.priority !== b.priority) {
-                return b.priority.localeCompare(a.priority);
+            // First by priority (HIGH -> MEDIUM -> LOW)
+            const priorityOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+            const priorityDiff =
+                (priorityOrder[b.priority] || 1) - (priorityOrder[a.priority] || 1);
+
+            if (priorityDiff !== 0) {
+                return priorityDiff;
             }
 
+            // Then by deadline (earlier deadlines first)
             if (a.deadline && b.deadline) {
-                return a.deadline.getTime() - b.deadline.getTime();
+                return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
             }
 
-            if (a.deadline) return -1;
-            if (b.deadline) return 1;
+            if (a.deadline && !b.deadline) return -1;
+            if (!a.deadline && b.deadline) return 1;
 
-            if (a.estimatedTime && b.estimatedTime) {
-                return a.estimatedTime - b.estimatedTime;
-            }
-
-            return 0;
+            // Finally by creation date (newer first)
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
     }
 
@@ -426,6 +504,176 @@ export class AiService {
         }
 
         return { insights, recommendations };
+    }
+
+    async analyzeTaskAndGenerateQuestions(taskText: string): Promise<{
+        needsMoreInfo: boolean;
+        questions: string[];
+        suggestedData: {
+            priority: Priority;
+            estimatedTime: number | null;
+        };
+    }> {
+        try {
+            const prompt = `
+                Task Analysis for Interactive Creation:
+                
+                User input: "${taskText}"
+                
+                Analyze this task and determine:
+                1. Is this task description clear and complete? 
+                2. What additional information might be helpful?
+                3. Suggest initial priority and estimated time
+                
+                Respond in JSON format:
+                {
+                    "needsMoreInfo": boolean,
+                    "questions": ["question1", "question2"],
+                    "suggestedPriority": "HIGH|MEDIUM|LOW",
+                    "suggestedTime": number_in_minutes
+                }
+                
+                Ask questions in Uzbek language. Examples:
+                - "Bu vazifa qachon bajarilishi kerak?"
+                - "Bu vazifa qanchalik muhim (yuqori, o'rta, past)?"
+                - "Qo'shimcha tafsilotlar bormi?"
+                - "Bu vazifa uchun qancha vaqt kerak?"
+                
+                Only ask 1-2 most important questions if task is unclear.
+            `;
+
+            const result = await this.model.generateContent(prompt);
+            const response = result.response.text().trim();
+
+            try {
+                const parsed = this.parseAIJsonResponse<{
+                    needsMoreInfo: boolean;
+                    questions: string[];
+                    suggestedPriority: string;
+                    suggestedTime: number | null;
+                }>(response);
+
+                return {
+                    needsMoreInfo: parsed.needsMoreInfo || false,
+                    questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+                    suggestedData: {
+                        priority: this.parsePriority(parsed.suggestedPriority),
+                        estimatedTime: parsed.suggestedTime || null,
+                    },
+                };
+            } catch {
+                return this.fallbackTaskAnalysis(taskText);
+            }
+        } catch (error) {
+            this.logger.error('Failed to analyze task for interactive creation', error);
+            return this.fallbackTaskAnalysis(taskText);
+        }
+    }
+
+    private parsePriority(priorityString: string): Priority {
+        if (priorityString && priorityString.toUpperCase().includes('HIGH')) {
+            return Priority.HIGH;
+        }
+        if (priorityString && priorityString.toUpperCase().includes('LOW')) {
+            return Priority.LOW;
+        }
+        return Priority.MEDIUM;
+    }
+
+    private parseAIJsonResponse<T>(response: string): T {
+        let cleaned = '';
+        try {
+            // Remove markdown code blocks and any other formatting
+            cleaned = response
+                .replace(/```json\s*/gi, '')
+                .replace(/```\s*/g, '')
+                .replace(/`/g, '');
+
+            // Remove leading/trailing whitespace
+            cleaned = cleaned.trim();
+
+            // Remove outer quotes if present
+            if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+                cleaned = cleaned.slice(1, -1);
+            }
+
+            // Try to extract JSON from text if wrapped in other content
+            const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+            if (jsonMatch) {
+                cleaned = jsonMatch[0];
+            }
+
+            // Parse JSON
+            return JSON.parse(cleaned);
+        } catch (error) {
+            this.logger.warn('Failed to parse AI JSON response', {
+                originalResponse: response,
+                cleanedResponse: cleaned,
+                error: error.message,
+            });
+            throw new Error(`Failed to parse AI JSON response: ${error.message}`);
+        }
+    }
+
+    private fallbackTaskAnalysis(taskText: string): {
+        needsMoreInfo: boolean;
+        questions: string[];
+        suggestedData: {
+            priority: Priority;
+            estimatedTime: number | null;
+        };
+    } {
+        const text = taskText.trim();
+        const words = text.split(/\s+/);
+        const hasUrgentKeywords = /urgent|asap|critical|important|shoshilinch|muhim|zarur/i.test(
+            text,
+        );
+        const hasTimeIndicators = /today|tomorrow|week|month|bugun|ertaga|hafta|oy/i.test(text);
+        const hasCompleteInfo = words.length >= 3 && (hasTimeIndicators || hasUrgentKeywords);
+
+        // Enhanced condition - ask more questions for better interaction
+        const needsMoreInfo =
+            text.length < 10 || // Less than 10 characters
+            words.length < 3 || // Less than 3 words
+            !hasCompleteInfo; // Lacks complete context
+
+        const questions: string[] = [];
+        if (needsMoreInfo) {
+            if (text.length < 5) {
+                questions.push("Bu vazifa haqida ko'proq ma'lumot bera olasizmi?");
+            } else if (!hasTimeIndicators && !hasUrgentKeywords) {
+                questions.push('Bu vazifa qachon bajarilishi kerak?');
+            } else if (words.length < 3) {
+                questions.push("Qo'shimcha tafsilotlar bera olasizmi?");
+            }
+        }
+
+        // Estimate priority based on keywords and context
+        let priority: Priority = Priority.MEDIUM;
+        if (hasUrgentKeywords) {
+            priority = Priority.HIGH;
+        } else if (text.length < 15 || /simple|quick|oddiy|tez/i.test(text)) {
+            priority = Priority.LOW;
+        }
+
+        // Estimate time based on task content
+        let estimatedTime = 60; // default 1 hour
+        if (/quick|tez|simple|oddiy/i.test(text)) {
+            estimatedTime = 30;
+        } else if (/meeting|uchrashuv|call|qo'ng'iroq/i.test(text)) {
+            estimatedTime = 60;
+        } else if (/project|loyiha|complex|murakkab/i.test(text)) {
+            estimatedTime = 180;
+        }
+
+        return {
+            needsMoreInfo,
+            questions,
+            suggestedData: {
+                priority,
+                estimatedTime,
+            },
+        };
     }
 }
 

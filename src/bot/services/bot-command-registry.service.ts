@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { Bot } from 'grammy';
-import { BotCommand } from '../../common/types/bot.types';
+import { BotCommand, TelegramCommand } from '../../common/types/bot.types';
 import { StartHandler } from '../handlers/start.handler';
 import { ContactHandler } from '../handlers/contact.handler';
 import { HelpHandler } from '../handlers/help.handler';
 import { TasksHandler } from '../../tasks/handlers/tasks.handler';
 import { ReportsHandler } from '../../reports/handlers/reports.handler';
 import { BotLoggerService } from './bot-logger.service';
+import { BotCommands } from '../config/commands';
+import { BotKeyboards } from '../utils/keyboards';
+import { SessionService } from './session.service';
+import { InteractiveTaskHandler } from '../../tasks/handlers/interactive-task.handler';
+import { SessionState } from '../interfaces/session.interface';
 
 @Injectable()
 export class BotCommandRegistryService {
@@ -19,99 +24,45 @@ export class BotCommandRegistryService {
         private readonly helpHandler: HelpHandler,
         private readonly tasksHandler: TasksHandler,
         private readonly reportsHandler: ReportsHandler,
+        private readonly sessionService: SessionService,
+        private readonly interactiveTaskHandler: InteractiveTaskHandler,
     ) {
         this.commands = this.setupCommands();
     }
 
+    /**
+     * Sets up all bot commands using the new organized structure
+     */
     private setupCommands(): BotCommand[] {
-        return [
-            {
-                command: 'start',
-                description: 'Start using the task manager',
-                handler: (ctx) => this.startHandler.handle(ctx),
-            },
-            {
-                command: 'register',
-                description: 'Register with phone number',
-                handler: (ctx) => this.contactHandler.handle(ctx),
-            },
-            {
-                command: 'add',
-                description: 'Add a new task',
-                handler: (ctx) => this.tasksHandler.handleAddTask(ctx),
-            },
-            {
-                command: 'list',
-                description: 'List all your tasks',
-                handler: (ctx) => this.tasksHandler.handleListTasks(ctx),
-            },
-            {
-                command: 'daily_report',
-                description: 'Get daily productivity report',
-                handler: (ctx) => this.reportsHandler.handleDailyReport(ctx),
-            },
-            {
-                command: 'weekly_report',
-                description: 'Get weekly productivity report',
-                handler: (ctx) => this.reportsHandler.handleWeeklyReport(ctx),
-            },
-            {
-                command: 'monthly_report',
-                description: 'Get monthly productivity report',
-                handler: (ctx) => this.reportsHandler.handleMonthlyReport(ctx),
-            },
-            {
-                command: 'quarterly_report',
-                description: 'Get quarterly productivity report',
-                handler: (ctx) => this.reportsHandler.handleQuarterlyReport(ctx),
-            },
-            {
-                command: 'yearly_report',
-                description: 'Get yearly productivity report',
-                handler: (ctx) => this.reportsHandler.handleYearlyReport(ctx),
-            },
-            {
-                command: 'analytics',
-                description: 'Get personal analytics',
-                handler: (ctx) => this.reportsHandler.handleAnalytics(ctx),
-            },
-            {
-                command: 'trend',
-                description: 'Get productivity trend',
-                handler: (ctx) => this.reportsHandler.handleProductivityTrend(ctx),
-            },
-            {
-                command: 'help',
-                description: 'Get help and usage instructions',
-                handler: (ctx) => this.helpHandler.handle(ctx),
-            },
-            {
-                command: 'task_help',
-                description: 'Get detailed help for task management',
-                handler: (ctx) => this.helpHandler.handleTaskHelp(ctx),
-            },
-            {
-                command: 'report_help',
-                description: 'Get detailed help for reports',
-                handler: (ctx) => this.helpHandler.handleReportHelp(ctx),
-            },
-        ];
+        return BotCommands.createCommands({
+            startHandler: this.startHandler,
+            contactHandler: this.contactHandler,
+            helpHandler: this.helpHandler,
+            tasksHandler: this.tasksHandler,
+            reportsHandler: this.reportsHandler,
+        });
     }
 
+    /**
+     * Registers visible commands with Telegram using setMyCommands API
+     * Only shows the most important commands in the bot menu
+     */
     public async registerCommands(bot: Bot): Promise<void> {
         try {
-            const botCommands = this.commands.map(({ command, description }) => ({
-                command,
-                description,
-            }));
-            await bot.api.setMyCommands(botCommands);
-            this.logger.info('Bot commands registered successfully');
+            const visibleCommands = BotCommands.getVisibleCommands(this.commands);
+            await bot.api.setMyCommands(visibleCommands);
+            this.logger.info(
+                `Bot commands registered successfully. Visible commands: ${visibleCommands.length}`,
+            );
         } catch (error) {
             this.logger.botError(undefined, error);
             throw error;
         }
     }
 
+    /**
+     * Sets up command handlers and interactive elements
+     */
     public setupHandlers(bot: Bot): void {
         // Register command handlers
         this.commands.forEach(({ command, handler }) => {
@@ -123,13 +74,95 @@ export class BotCommandRegistryService {
             });
         });
 
-        // Handle callback queries for consent response
-        // These are not strictly "commands", but they are part of the bot's interactive handlers.
-        // It makes sense to keep them close to command handlers or move them to a more general "InteractionHandlerService" in the future.
-        // For now, keeping them here as they were part of the original setupHandlers.
-        bot.callbackQuery(['agree_phone', 'decline_phone'], (ctx) => {
+        // Handle callback queries for reports
+        bot.callbackQuery(
+            [
+                'daily_report',
+                'weekly_report',
+                'monthly_report',
+                'quarterly_report',
+                'yearly_report',
+                'analytics',
+                'trend',
+            ],
+            async (ctx) => {
+                this.logger.callbackReceived(ctx, ctx.callbackQuery.data);
+                await ctx.answerCallbackQuery();
+
+                const action = ctx.callbackQuery.data;
+                switch (action) {
+                    case 'daily_report':
+                        await this.reportsHandler.handleDailyReport(ctx);
+                        break;
+                    case 'weekly_report':
+                        await this.reportsHandler.handleWeeklyReport(ctx);
+                        break;
+                    case 'monthly_report':
+                        await this.reportsHandler.handleMonthlyReport(ctx);
+                        break;
+                    case 'quarterly_report':
+                        await this.reportsHandler.handleQuarterlyReport(ctx);
+                        break;
+                    case 'yearly_report':
+                        await this.reportsHandler.handleYearlyReport(ctx);
+                        break;
+                    case 'analytics':
+                        await this.reportsHandler.handleAnalytics(ctx);
+                        break;
+                    case 'trend':
+                        await this.reportsHandler.handleProductivityTrend(ctx);
+                        break;
+                }
+            },
+        );
+
+        // Handle help navigation callbacks
+        bot.callbackQuery(['task_help', 'report_help', 'main_menu'], async (ctx) => {
             this.logger.callbackReceived(ctx, ctx.callbackQuery.data);
-            return this.contactHandler.handleConsentResponse(ctx);
+            await ctx.answerCallbackQuery();
+
+            const action = ctx.callbackQuery.data;
+            switch (action) {
+                case 'task_help':
+                    await this.helpHandler.handleTaskHelp(ctx);
+                    break;
+                case 'report_help':
+                    await this.helpHandler.handleReportHelp(ctx);
+                    break;
+                case 'main_menu':
+                    await this.helpHandler.handle(ctx);
+                    break;
+            }
+        });
+
+        // Handle task action callbacks
+        bot.callbackQuery(['add_task', 'list_tasks', 'complete_task', 'reports'], async (ctx) => {
+            this.logger.callbackReceived(ctx, ctx.callbackQuery.data);
+            await ctx.answerCallbackQuery();
+
+            const action = ctx.callbackQuery.data;
+            switch (action) {
+                case 'add_task':
+                    await this.tasksHandler.handleAddTask(ctx);
+                    break;
+                case 'list_tasks':
+                    await this.tasksHandler.handleListTasks(ctx);
+                    break;
+                case 'complete_task':
+                    await this.tasksHandler.handleCompleteTask(ctx);
+                    break;
+                case 'reports':
+                    await ctx.reply('📊 Hisobotlar:', {
+                        reply_markup: BotKeyboards.createReportKeyboard(),
+                    });
+                    break;
+            }
+        });
+
+        // Handle consent responses for phone number registration
+        bot.callbackQuery(['agree_phone', 'decline_phone'], async (ctx) => {
+            this.logger.callbackReceived(ctx, ctx.callbackQuery.data);
+            await this.contactHandler.handleConsentResponse(ctx);
         });
 
         // Handle contact messages for phone number registration
@@ -137,5 +170,81 @@ export class BotCommandRegistryService {
             this.logger.messageReceived(ctx);
             return this.contactHandler.handle(ctx);
         });
+
+        // Handle cancel actions
+        bot.callbackQuery('cancel', async (ctx) => {
+            await ctx.answerCallbackQuery('Bekor qilindi');
+            await ctx.deleteMessage();
+        });
+
+        // Handle interactive task creation callbacks
+        bot.callbackQuery(['confirm_task', 'edit_task', 'cancel_task'], async (ctx) => {
+            this.logger.callbackReceived(ctx, ctx.callbackQuery.data);
+            await ctx.answerCallbackQuery();
+
+            const action = ctx.callbackQuery.data;
+            const userId = ctx.from?.id?.toString();
+            const chatId = ctx.chat?.id;
+
+            if (!userId || !chatId) return;
+
+            switch (action) {
+                case 'confirm_task':
+                    await this.interactiveTaskHandler.handleTaskConfirmation(ctx);
+                    break;
+                case 'edit_task':
+                    await this.interactiveTaskHandler.handleTaskEdit(ctx);
+                    break;
+                case 'cancel_task':
+                    this.sessionService.clearSession(userId, chatId);
+                    await ctx.editMessageText('❌ Vazifa yaratish bekor qilindi.');
+                    break;
+            }
+        });
+
+        // Handle session-aware text messages for ongoing conversations
+        bot.on('message:text', async (ctx) => {
+            const userId = ctx.from?.id?.toString();
+            const chatId = ctx.chat?.id;
+            const messageText = ctx.message?.text;
+
+            if (!userId || !chatId || !messageText) return;
+
+            // Check if there's an active session
+            const session = this.sessionService.getSession(userId, chatId);
+
+            if (session && session.state !== SessionState.IDLE) {
+                // Handle session-based conversation
+                this.logger.messageReceived(ctx);
+
+                switch (session.state) {
+                    case SessionState.ASKING_DETAILS:
+                        await this.interactiveTaskHandler.handleUserResponse(ctx, messageText);
+                        break;
+                    case SessionState.EDITING_TASK:
+                        await this.interactiveTaskHandler.handleTaskEdit(ctx);
+                        break;
+                    default:
+                        // For other states, clear session and handle as normal message
+                        this.sessionService.clearSession(userId, chatId);
+                        break;
+                }
+            }
+            // If no active session, normal message handling will continue through other handlers
+        });
+    }
+
+    /**
+     * Gets all commands for external use (e.g., help generation)
+     */
+    public getAllCommands(): BotCommand[] {
+        return this.commands;
+    }
+
+    /**
+     * Gets commands by category
+     */
+    public getCommandsByCategory(category: string): BotCommand[] {
+        return this.commands.filter((cmd) => cmd.category === category);
     }
 }

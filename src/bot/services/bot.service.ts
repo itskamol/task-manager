@@ -32,9 +32,13 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
     async onModuleInit(): Promise<void> {
         try {
-            // Delegate to the new service
+            // Setup command handlers first
             this.commandRegistryService.setupHandlers(this.bot);
+
+            // Register visible commands with Telegram
             await this.commandRegistryService.registerCommands(this.bot);
+
+            // Start the bot
             await this.bot.start({
                 onStart: () => this.logger.botStarted(),
             });

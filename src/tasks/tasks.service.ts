@@ -42,6 +42,7 @@ export class TasksService {
             task = await this.updateTask(task.id, userId, {
                 deadline: suggestedDeadline,
             });
+            console.log(`Task ${task.id} deadline updated to ${suggestedDeadline}`);
         }
 
         return task;

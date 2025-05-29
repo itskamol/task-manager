@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14 # Using a specific version like postgres:14 is often a good practice
+    restart: always
+    environment:
+      POSTGRES_USER: user       # Replace with your desired user if needed
+      POSTGRES_PASSWORD: pass   # Replace with your desired password if needed
+      POSTGRES_DB: taskdb       # Replace with your desired database name if needed
+    ports:
+      - "5432:5432"
+    volumes: # Optional: to persist data across restarts
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000" # Use PORT from .env if set, otherwise default to 3000
+    env_file:
+      - .env
+    depends_on:
+      - db
+    # Optional: command to wait for db to be ready, if needed by your app startup
+    # command: ["./wait-for-postgres.sh", "db", "npm", "run", "start:prod"] 
+
+volumes: # Define the volume if you used it in the db service
+  postgres_data:

@@ -23,25 +23,81 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+A NestJS-based backend for a Task Manager application. It provides functionalities for task management and user interactions, primarily through a Telegram bot interface, and will include API documentation via Swagger.
 
-## Project setup
+## Setup Instructions
 
-```bash
-$ npm install
-```
+### Prerequisites
+*   Node.js (v18 or higher recommended)
+*   npm (comes with Node.js)
+*   Docker and Docker Compose (for containerized deployment)
+*   A running PostgreSQL instance.
 
-## Compile and run the project
+### Environment Setup
+1.  Clone the repository:
+    ```bash
+    git clone <your-repository-url>
+    cd task-manager
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Set up your environment variables:
+    *   Copy the example environment file:
+        ```bash
+        cp .env.example .env
+        ```
+    *   Edit the `.env` file with your specific configurations (see `Example Environment Variables` section below).
+4.  Set up the database:
+    *   Ensure your PostgreSQL server is running and accessible.
+    *   Apply Prisma migrations:
+        ```bash
+        npx prisma migrate dev
+        ```
 
-```bash
-# development
-$ npm run start
+### Running the Application
 
-# watch mode
-$ npm run start:dev
+*   **Development Mode (with hot-reloading):**
+    ```bash
+    npm run start:dev
+    ```
+    The application will be available at `http://localhost:3000` (or the port specified in your `.env`).
 
-# production mode
-$ npm run start:prod
+*   **Production Mode:**
+    ```bash
+    npm run build
+    npm run start:prod
+    ```
+
+*   **Running with Docker:**
+    (Ensure Docker is installed and running)
+    ```bash
+    docker-compose up --build
+    ```
+    The application will be available at `http://localhost:3000` and the PostgreSQL database at `localhost:5432`.
+
+## API Documentation
+Once the application is running, Swagger API documentation will be available at `/api`. (Note: This will primarily be useful once RESTful API endpoints are added/exposed).
+
+## Example Environment Variables
+Create a `.env` file in the root of the project with the following variables (refer to `.env.example` for a template):
+```ini
+# PostgreSQL connection URL
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
+
+# JWT Secret Key for authentication (if/when REST API auth is added)
+JWT_SECRET="yourSuperSecretKey"
+
+# Port the application will run on
+PORT=3000
+
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN="yourTelegramBotToken"
+
+# Redis Configuration (optional, if used for caching/queues)
+REDIS_HOST="localhost"
+REDIS_PORT=6379
 ```
 
 ## Run tests

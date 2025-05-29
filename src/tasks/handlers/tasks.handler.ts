@@ -2,79 +2,56 @@ import { Injectable } from '@nestjs/common';
 import { Context } from 'grammy';
 import { TasksService } from '../tasks.service';
 import { Priority, Status } from '@prisma/client';
-import { AiService } from '../../ai/ai.service';
-import { CreateTaskDto } from '../dto/create-task.dto';
-import { PrismaService } from '../../prisma/prisma.service';
+// AiService is no longer needed here
+// CreateTaskDto is no longer needed here as TasksService.createTaskWithAISuggestions takes raw inputs
+// PrismaService is no longer needed here
 import { formatInUserTz } from '../utils/time.utils';
-import { BotLoggerService } from 'src/bot/services/bot-logger.service';
+import { BotLoggerService } from '../../bot/services/bot-logger.service'; // Corrected path
+import { AuthService } from '../../bot/services/auth.service'; // Import AuthService
+import { AiService } from '../../ai/ai.service'; // Still needed for optimizeSchedule in handleListTasks
 
 @Injectable()
 export class TasksHandler {
     constructor(
         private readonly tasksService: TasksService,
         private readonly logger: BotLoggerService,
-        private readonly aiService: AiService,
-        private readonly prisma: PrismaService,
+        private readonly authService: AuthService, // Inject AuthService
+        private readonly aiService: AiService, // Keep AiService for handleListTasks
     ) {}
 
     async handleAddTask(ctx: Context): Promise<void> {
         if (!ctx.from?.id || !ctx.message?.text) return;
 
-        const args = ctx.message.text.split(' ').slice(1).join(' ');
-        if (!args) {
+        const taskText = ctx.message.text.split(' ').slice(1).join(' ');
+        if (!taskText) {
             await ctx.reply('Please provide a task title. Example: /add Buy groceries');
             return;
         }
 
         try {
-            // Use AI to analyze and suggest task properties
-            const priority = this.aiService.analyzePriority(args);
-            const estimatedTime = this.aiService.estimateTaskDuration(args);
-
-            // Get user timezone from the database
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
-
-            const timezone = user?.timezone || 'Asia/Tashkent';
-
-            const taskDto: CreateTaskDto = {
-                title: args,
-                priority,
-                estimatedTime: estimatedTime ?? undefined,
-                timezone,
-            };
-
-            // Convert deadline to Date if it exists
-            if (taskDto.deadline) {
-                taskDto.deadline = new Date(taskDto.deadline).toISOString();
+            const user = await this.authService.getUser(BigInt(ctx.from.id));
+            if (!user) {
+                await ctx.reply('Could not find your user information. Please try /start again.');
+                return;
             }
 
-            const task = await this.tasksService.createTask(user?.id || '', {
-                ...taskDto,
-                deadline: taskDto.deadline ? new Date(taskDto.deadline) : undefined,
-            });
+            const task = await this.tasksService.createTaskWithAISuggestions(
+                user.id,
+                taskText,
+                user.timezone,
+            );
 
-            // Get AI-suggested deadline
-            const suggestedDeadline = this.aiService.suggestDeadline(task);
-            if (suggestedDeadline) {
-                const updatedTask = await this.tasksService.updateTask(task.id, user?.id || '', {
-                    deadline: suggestedDeadline,
-                });
-                task.deadline = updatedTask.deadline;
-            }
-
-            const formattedDeadline = formatInUserTz(task.deadline, timezone);
+            const formattedDeadline = formatInUserTz(task.deadline, user.timezone);
             const deadlineText = formattedDeadline
-                ? `\nDeadline: ${formattedDeadline} (${timezone})`
+                ? `\nDeadline: ${formattedDeadline} (${user.timezone})`
                 : '';
-            const estimatedTimeText = estimatedTime
-                ? `\nEstimated time: ${estimatedTime} minutes`
+            const estimatedTimeText = task.estimatedTime
+                ? `\nEstimated time: ${task.estimatedTime} minutes`
                 : '';
 
             await ctx.reply(
                 `✅ Task created: ${task.title}\n` +
-                    `Priority: ${this.getPriorityEmoji(priority)} ${priority}` +
+                    `Priority: ${this.getPriorityEmoji(task.priority)} ${task.priority}` +
                     deadlineText +
                     estimatedTimeText +
                     '\n\nUse /set_deadline or /set_priority to adjust these suggestions.',
@@ -91,7 +68,13 @@ export class TasksHandler {
         if (!ctx.from?.id) return;
 
         try {
-            const tasks = await this.tasksService.getUserTasks(String(ctx.from.id));
+            const user = await this.authService.getUser(BigInt(ctx.from.id));
+            if (!user) {
+                await ctx.reply('Could not find your user information. Please try /start again.');
+                return;
+            }
+            
+            const tasks = await this.tasksService.getUserTasks(user.id);
 
             if (tasks.length === 0) {
                 await ctx.reply('You have no tasks. Use /add to create one!');
@@ -99,20 +82,17 @@ export class TasksHandler {
             }
 
             // Use AI to optimize task order
+            // AiService is still needed here for optimizeSchedule
             const optimizedTasks = await this.aiService.optimizeSchedule(tasks);
-
-            // Get user timezone
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
-            const timezone = user?.timezone || 'Asia/Tashkent';
+            
+            const userTimezone = user.timezone;
 
             const taskList = optimizedTasks
                 .map((task) => {
                     const status = task.status === Status.DONE ? '✅' : '⏳';
                     const priority = this.getPriorityEmoji(task.priority);
-                    const deadline = formatInUserTz(task.deadline, timezone);
-                    const deadlineText = deadline ? `\nDeadline: ${deadline} (${timezone})` : '';
+                    const deadline = formatInUserTz(task.deadline, userTimezone);
+                    const deadlineText = deadline ? `\nDeadline: ${deadline} (${userTimezone})` : '';
                     const estimatedTime = task.estimatedTime
                         ? `\nEstimated: ${task.estimatedTime} minutes`
                         : '';

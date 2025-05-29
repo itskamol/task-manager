@@ -2,13 +2,50 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Task, Priority, Status, Repeat } from '@prisma/client';
 import { SchedulerService } from '../scheduler/scheduler.service';
+import { AiService } from '../ai/ai.service'; // Import AiService
 
 @Injectable()
 export class TasksService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly scheduler: SchedulerService,
+        private readonly aiService: AiService, // Inject AiService
     ) {}
+
+    async createTaskWithAISuggestions(
+        userId: string,
+        taskText: string,
+        userTimezone: string, // Already part of task model, but good for context
+    ): Promise<Task> {
+        // 1. Get AI suggestions for priority and estimated time
+        const priority = this.aiService.analyzePriority(taskText);
+        const estimatedTime = this.aiService.estimateTaskDuration(taskText);
+
+        // 2. Create the initial task
+        let task = await this.createTask(userId, {
+            title: taskText,
+            priority,
+            estimatedTime: estimatedTime ?? undefined,
+            // The userTimezone is primarily for display or deadline interpretation,
+            // the task.timezone field in Prisma schema has a default.
+            // We can set it here if needed, or rely on default/update later.
+            // For now, let's assume `createTask` handles the timezone if it's part of its 'data' param.
+            // If task model's timezone should be user's timezone, pass it here.
+            timezone: userTimezone, // Assuming task.timezone should be user's timezone
+        });
+
+        // 3. Get AI-suggested deadline for the created task
+        const suggestedDeadline = this.aiService.suggestDeadline(task);
+
+        // 4. If a deadline is suggested, update the task
+        if (suggestedDeadline) {
+            task = await this.updateTask(task.id, userId, {
+                deadline: suggestedDeadline,
+            });
+        }
+
+        return task;
+    }
 
     async createTask(
         userId: string,

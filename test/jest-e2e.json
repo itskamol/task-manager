@@ -1,9 +1,40 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
-  "rootDir": ".",
+  "rootDir": "..",
+  "roots": ["<rootDir>/test"],
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
-  }
+  },
+  "globalSetup": "<rootDir>/test/config/globalSetup.ts",
+  "globalTeardown": "<rootDir>/test/config/globalTeardown.ts",
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/src/$1",
+    "^test/(.*)$": "<rootDir>/test/$1"
+  },
+  "collectCoverage": false,
+  "coverageDirectory": "<rootDir>/coverage/e2e",
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/main.ts",
+    "!src/**/*.module.ts",
+    "!src/**/prisma.service.ts",
+    "!src/config/**/*.ts",
+    "!src/common/types/**/*.ts",
+    "!src/common/errors/**/*.ts",
+    "!src/scheduler/processors/reminder.processor.ts", 
+    "!**/node_modules/**",
+    "!**/vendor/**",
+    "!**/*.spec.ts",
+    "!**/*.e2e-spec.ts",
+    "!**/test/**"
+  ],
+  "coverageReporters": [
+    "json",
+    "lcov",
+    "text",
+    "clover",
+    "text-summary"
+  ]
 }

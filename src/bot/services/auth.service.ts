@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Context, InlineKeyboard, Keyboard } from 'grammy';
 import { BotLoggerService } from './bot-logger.service';
+import { User } from '@prisma/client'; // Import User type
 
 @Injectable()
 export class AuthService {
@@ -116,6 +117,19 @@ export class AuthService {
                 'Sorry, there was an error registering your account. Please try again later.',
                 { reply_markup: { remove_keyboard: true } },
             );
+        }
+    }
+
+    async getUser(telegramId: bigint): Promise<User | null> {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { telegramId },
+            });
+            return user;
+        } catch (error) {
+            // Log the error but don't expose details to the caller unless necessary
+            this.logger.error('Failed to fetch user by Telegram ID', error, { telegramId });
+            return null; // Or throw a custom application error
         }
     }
 }

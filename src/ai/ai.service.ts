@@ -6,15 +6,12 @@ import { Priority, Task } from '@prisma/client';
 import { addTimeInTimezone } from '../tasks/utils/time.utils';
 
 /**
- * Enhanced AI Service with Gemini API Integration
+ * AI Service with Gemini API Integration
  *
- * This service provides AI-powered task management features including:
+ * Essential task management AI features:
  * - Smart priority analysis based on task content
  * - Intelligent deadline suggestions
  * - Task duration estimation
- * - Schedule optimization
- * - User behavior analysis and insights generation
- * - Comprehensive reporting with AI insights in Uzbek language
  *
  * All methods include fallback mechanisms for when AI is unavailable.
  */
@@ -37,12 +34,9 @@ export class AiService {
     }
 
     async analyzePriority(title: string, description?: string): Promise<Priority> {
-        const startTime = Date.now();
-
         try {
-            // Log AI operation start
-            this.logger.logAiOperation('PRIORITY_ANALYSIS_START', 0, true, {
-                title: title.substring(0, 50), // Log truncated title for privacy
+            this.logger.debug('Analyzing task priority', {
+                title: title.substring(0, 50),
                 hasDescription: !!description,
             });
 
@@ -65,10 +59,8 @@ export class AiService {
 
             const result = await this.model.generateContent(prompt);
             const response = result.response.text().trim().toUpperCase();
-            const duration = Date.now() - startTime;
 
-            // Log successful AI operation
-            this.logger.logAiOperation('PRIORITY_ANALYSIS', duration, true, {
+            this.logger.debug('Priority analysis completed', {
                 response,
                 title: title.substring(0, 50),
             });
@@ -78,14 +70,6 @@ export class AiService {
             if (response.includes('MEDIUM')) return Priority.MEDIUM;
             return Priority.LOW;
         } catch (error) {
-            const duration = Date.now() - startTime;
-
-            // Log failed AI operation
-            this.logger.logAiOperation('PRIORITY_ANALYSIS', duration, false, {
-                error: error.message,
-                title: title.substring(0, 50),
-            });
-
             this.logger.error('Failed to analyze priority with AI, using fallback', error, {
                 context: 'AiService',
             });
@@ -167,368 +151,99 @@ export class AiService {
 
     async suggestDeadline(task: Task): Promise<Date | null> {
         try {
+            this.logger.debug('Suggesting deadline for task', {
+                taskId: task.id,
+                title: task.title.substring(0, 50),
+            });
+
             const prompt = `
-                Task Deadline Suggestion:
-                
+                Task Deadline Analysis:
                 Title: "${task.title}"
-                Description: "${task.description || 'No description'}"
                 Priority: ${task.priority}
-                Estimated Time: ${task.estimatedTime || 'Unknown'} minutes
-                Created: ${task.createdAt.toISOString()}
+                ${task.description ? `Description: "${task.description}"` : ''}
                 
-                Based on this task information, suggest a realistic deadline. Consider:
-                - Task priority (HIGH = urgent, MEDIUM = important, LOW = routine)
-                - Estimated completion time
-                - Best practices for task management
+                Suggest a reasonable deadline based on priority and content.
+                Consider:
+                - HIGH priority: within 48 hours
+                - MEDIUM priority: within 5 days
+                - LOW priority: within 2 weeks
                 
-                Respond with ONLY a number representing hours from now when this task should be completed.
-                Examples: 
-                - For urgent tasks: 24 (24 hours)
-                - For important tasks: 72 (3 days) 
-                - For routine tasks: 168 (1 week)
-                
-                Respond with ONLY the number of hours.
+                Respond with ONLY a number between 1-14 (days).
             `;
 
             const result = await this.model.generateContent(prompt);
-            const response = result.response.text().trim();
-            const hours = parseInt(response);
-            console.log(`AI suggested deadline in hours: ${hours}`);
-            if (isNaN(hours) || hours <= 0) {
+            const daysText = result.response.text().trim();
+            const days = parseInt(daysText, 10);
+
+            if (isNaN(days) || days < 1 || days > 14) {
+                this.logger.warn('Invalid deadline suggestion from AI, using fallback', {
+                    response: daysText,
+                    taskId: task.id,
+                });
                 return this.fallbackSuggestDeadline(task);
             }
 
-            // Use task timezone for deadline calculation
-            const taskTimezone = task.timezone || 'Asia/Tashkent';
-            const deadline = addTimeInTimezone(new Date(), hours, 'hours', taskTimezone);
-            console.log(
-                `Calculated deadline: ${deadline.toISOString()} for timezone: ${taskTimezone}`,
-            );
-            return deadline;
+            this.logger.debug('Deadline suggestion generated', {
+                taskId: task.id,
+                suggestedDays: days,
+            });
+
+            return addTimeInTimezone(new Date(), days * 24, 'hours', task.timezone);
         } catch (error) {
-            this.logger.error('Failed to suggest deadline with AI, using fallback', error);
+            this.logger.error('Failed to suggest deadline with AI, using fallback', error, {
+                context: 'AiService',
+                taskId: task.id,
+            });
             return this.fallbackSuggestDeadline(task);
         }
     }
 
     private fallbackSuggestDeadline(task: Task): Date | null {
-        const taskTimezone = task.timezone || 'Asia/Tashkent';
+        const days =
+            task.priority === Priority.HIGH ? 2 : task.priority === Priority.MEDIUM ? 5 : 14;
 
-        if (task.priority === Priority.HIGH) {
-            // High priority: 24 hours from now
-            return addTimeInTimezone(new Date(), 24, 'hours', taskTimezone);
-        }
-
-        if (task.priority === Priority.MEDIUM) {
-            // Medium priority: 3 days from now
-            return addTimeInTimezone(new Date(), 3, 'days', taskTimezone);
-        }
-
-        // Low priority: 1 week from now
-        return addTimeInTimezone(new Date(), 1, 'weeks', taskTimezone);
+        return addTimeInTimezone(new Date(), days * 24, 'hours', task.timezone);
     }
 
-    async estimateTaskDuration(title: string, description?: string): Promise<number | null> {
+    async estimateTaskDuration(taskText: string): Promise<number | null> {
         try {
+            this.logger.debug('Estimating task duration', {
+                text: taskText.substring(0, 50),
+            });
+
             const prompt = `
                 Task Duration Estimation:
+                Task: "${taskText}"
                 
-                Title: "${title}"
-                Description: "${description || 'No description provided'}"
-                
-                Estimate how many minutes this task will take to complete. Consider:
+                Analyze this task and estimate how many minutes it might take.
+                Consider:
                 - Task complexity
-                - Common time requirements for similar tasks
-                - Keywords that indicate duration (quick, meeting, project, etc.)
+                - Required steps
+                - Similar common tasks
                 
-                Common estimates:
-                - Quick tasks: 15-30 minutes
-                - Simple tasks: 30-60 minutes  
-                - Meetings/calls: 30-120 minutes
-                - Complex projects: 120+ minutes
-                
-                Respond with ONLY a number representing estimated minutes.
+                Respond with ONLY a number (minutes).
+                Keep estimates realistic and moderate (15-480 minutes).
             `;
 
             const result = await this.model.generateContent(prompt);
-            const response = result.response.text().trim();
-            const minutes = parseInt(response);
+            const minutesText = result.response.text().trim();
+            const minutes = parseInt(minutesText, 10);
 
-            if (isNaN(minutes) || minutes <= 0) {
-                return this.fallbackEstimateTaskDuration(title, description);
+            if (isNaN(minutes) || minutes < 15 || minutes > 480) {
+                this.logger.warn('Invalid duration estimate from AI, returning null', {
+                    response: minutesText,
+                });
+                return null;
             }
 
+            this.logger.debug('Duration estimate generated', { minutes });
             return minutes;
         } catch (error) {
-            this.logger.error('Failed to estimate duration with AI, using fallback', error);
-            return this.fallbackEstimateTaskDuration(title, description);
+            this.logger.error('Failed to estimate task duration, returning null', error, {
+                context: 'AiService',
+            });
+            return null;
         }
-    }
-
-    private fallbackEstimateTaskDuration(title: string, description?: string): number | null {
-        const text = `${title} ${description || ''}`.toLowerCase();
-
-        if (text.includes('quick') || text.includes('simple')) {
-            return 30;
-        }
-
-        if (text.includes('meeting') || text.includes('call')) {
-            return 60;
-        }
-
-        return 120;
-    }
-
-    async optimizeSchedule(tasks: Task[]): Promise<Task[]> {
-        try {
-            if (tasks.length === 0) {
-                return tasks;
-            }
-
-            const prompt = `
-            Analyze these tasks and suggest the optimal order for completion.
-            Consider priority, deadlines, and estimated time.
-            
-            Tasks:
-            ${tasks
-                .map(
-                    (task) =>
-                        `- ID: ${task.id}, Title: ${task.title}, Priority: ${task.priority}, 
-                 Deadline: ${task.deadline || 'No deadline'}, 
-                 Estimated: ${task.estimatedTime || 'Unknown'} minutes`,
-                )
-                .join('\n')}
-            
-            Return ONLY a valid JSON array with the task IDs in optimal order.
-            Example: ["task-id-1", "task-id-2", "task-id-3"]
-            
-            Do not include any markdown formatting or explanations.
-        `;
-
-            const result = await this.model.generateContent(prompt);
-            const response = result.response.text().trim();
-
-            // Clean up response by removing markdown code blocks
-            const cleanedResponse = this.cleanJsonResponse(response);
-
-            try {
-                const optimizedIds = JSON.parse(cleanedResponse);
-
-                if (!Array.isArray(optimizedIds)) {
-                    throw new Error('Response is not an array');
-                }
-
-                // Reorder tasks based on AI suggestion
-                const orderedTasks = optimizedIds
-                    .map((id) => tasks.find((task) => task.id === id))
-                    .filter((task) => task !== undefined) as Task[];
-
-                // Add any tasks that weren't in the AI response
-                const remainingTasks = tasks.filter((task) => !optimizedIds.includes(task.id));
-
-                return [...orderedTasks, ...remainingTasks];
-            } catch (parseError) {
-                this.logger.warn('Failed to parse AI schedule optimization response', {
-                    response: cleanedResponse,
-                    error: parseError,
-                });
-                return this.fallbackScheduleOptimization(tasks);
-            }
-        } catch (error) {
-            this.logger.error('Failed to optimize schedule with AI, using fallback', error);
-            return this.fallbackScheduleOptimization(tasks);
-        }
-    }
-
-    private cleanJsonResponse(response: string): string {
-        // Remove markdown code block syntax
-        let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-
-        // Remove any leading/trailing whitespace
-        cleaned = cleaned.trim();
-
-        // If response starts and ends with quotes, remove them
-        if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-            cleaned = cleaned.slice(1, -1);
-        }
-
-        return cleaned;
-    }
-
-    private fallbackScheduleOptimization(tasks: Task[]): Task[] {
-        // Simple fallback: sort by priority and deadline
-        return tasks.sort((a, b) => {
-            // First by priority (HIGH -> MEDIUM -> LOW)
-            const priorityOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-            const priorityDiff =
-                (priorityOrder[b.priority] || 1) - (priorityOrder[a.priority] || 1);
-
-            if (priorityDiff !== 0) {
-                return priorityDiff;
-            }
-
-            // Then by deadline (earlier deadlines first)
-            if (a.deadline && b.deadline) {
-                return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-            }
-
-            if (a.deadline && !b.deadline) return -1;
-            if (!a.deadline && b.deadline) return 1;
-
-            // Finally by creation date (newer first)
-            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
-    }
-
-    async analyzeUserBehavior(userActions: UserAction[]): Promise<string> {
-        try {
-            const prompt = `
-                User Behavior Analysis:
-                
-                Recent user actions:
-                ${JSON.stringify(userActions, null, 2)}
-                
-                Analyze this user's task management patterns and provide insights:
-                1. Task completion patterns
-                2. Priority preferences
-                3. Time management habits
-                4. Suggestions for improvement
-                
-                Provide a helpful response in Uzbek language that the user can understand.
-                Keep it concise and actionable.
-            `;
-
-            const result = await this.model.generateContent(prompt);
-            return result.response.text().trim();
-        } catch (error) {
-            this.logger.error('Failed to analyze user behavior', error);
-            return "Foydalanuvchi xatti-harakatlari tahlil qilinmadi. Keyinroq qayta urinib ko'ring.";
-        }
-    }
-
-    async generateTaskSuggestions(userContext: string): Promise<string[]> {
-        try {
-            const prompt = `
-                Task Suggestion Generator:
-                
-                User context: "${userContext}"
-                
-                Based on this context, suggest 3-5 relevant tasks that the user might want to add.
-                Consider:
-                - Common daily/weekly tasks
-                - Work-related activities
-                - Personal development
-                - Health and wellness
-                
-                Respond with a JSON array of task suggestions in Uzbek language.
-                Example: ["Kitob o'qish", "Sport mashqlari", "Ish hisobotini tayyorlash"]
-            `;
-
-            const result = await this.model.generateContent(prompt);
-            const response = result.response.text().trim();
-
-            try {
-                const suggestions = JSON.parse(response);
-                return Array.isArray(suggestions) ? suggestions : [];
-            } catch {
-                return [];
-            }
-        } catch (error) {
-            this.logger.error('Failed to generate task suggestions', error);
-            return [];
-        }
-    }
-
-    async generateReportInsights(
-        reportData: any,
-    ): Promise<{ insights: string[]; recommendations: string[] }> {
-        try {
-            const prompt = `
-                Task Management Report Analysis:
-                
-                Period: ${reportData.period}
-                Total Tasks: ${reportData.analytics?.totalTasks || 0}
-                Completed Tasks: ${reportData.analytics?.completedTasks || 0}
-                Completion Rate: ${reportData.analytics?.completionRate || 0}%
-                Productivity Score: ${reportData.analytics?.productivityScore || 0}/100
-                Overdue Tasks: ${reportData.analytics?.overdueeTasks || 0}
-                
-                Priority Distribution:
-                - High: ${reportData.analytics?.priorityDistribution?.high || 0}
-                - Medium: ${reportData.analytics?.priorityDistribution?.medium || 0}
-                - Low: ${reportData.analytics?.priorityDistribution?.low || 0}
-                
-                Based on this data, provide:
-                1. 2-3 key insights about user's productivity patterns
-                2. 2-3 specific recommendations for improvement
-                
-                Respond in Uzbek language with JSON format:
-                {
-                    "insights": ["insight1", "insight2", "insight3"],
-                    "recommendations": ["recommendation1", "recommendation2", "recommendation3"]
-                }
-                
-                Focus on practical, actionable advice.
-            `;
-
-            const result = await this.model.generateContent(prompt);
-            const response = result.response.text().trim();
-
-            try {
-                const parsed = JSON.parse(response);
-                return {
-                    insights: Array.isArray(parsed.insights) ? parsed.insights : [],
-                    recommendations: Array.isArray(parsed.recommendations)
-                        ? parsed.recommendations
-                        : [],
-                };
-            } catch {
-                return this.getFallbackInsights(reportData);
-            }
-        } catch (error) {
-            this.logger.error('Failed to generate report insights', error);
-            return this.getFallbackInsights(reportData);
-        }
-    }
-
-    private getFallbackInsights(reportData: any): {
-        insights: string[];
-        recommendations: string[];
-    } {
-        const completionRate = reportData.analytics?.completionRate || 0;
-        const productivityScore = reportData.analytics?.productivityScore || 0;
-        const overdueeTasks = reportData.analytics?.overdueeTasks || 0;
-
-        const insights: string[] = [];
-        const recommendations: string[] = [];
-
-        if (completionRate >= 80) {
-            insights.push("🎯 Siz vazifalarni bajarishda juda yaxshi natijalar ko'rsatyapsiz!");
-        } else if (completionRate >= 60) {
-            insights.push("📊 Vazifalarni bajarish darajasi o'rtacha, yaxshilash imkoniyati bor.");
-        } else {
-            insights.push("⚠️ Vazifalarni bajarish darajasi pastroq, e'tibor talab qiladi.");
-        }
-
-        if (overdueeTasks > 0) {
-            insights.push(`⏰ ${overdueeTasks} ta vazifa muddati o'tgan.`);
-            recommendations.push(
-                '🕐 Deadlinelarni aniqroq belgilang va eslatmalardan foydalaning.',
-            );
-        }
-
-        if (productivityScore < 70) {
-            recommendations.push('📅 Kunlik rejalashtirish va prioritetlashtirish ustida ishlang.');
-            recommendations.push(
-                '🎯 Kichik vazifalardan boshlang va muvaffaqiyatlarni nishonlang.',
-            );
-        } else {
-            recommendations.push(
-                '🚀 Yaxshi natijalar! Ushbu darajani saqlab qolishga harakat qiling.',
-            );
-        }
-
-        return { insights, recommendations };
     }
 
     async analyzeTaskAndGenerateQuestions(taskText: string): Promise<{
@@ -541,42 +256,30 @@ export class AiService {
     }> {
         try {
             const prompt = `
-                Task Analysis for Interactive Creation:
+                Task Analysis:
+                "${taskText}"
                 
-                User input: "${taskText}"
+                Analyze this task description and return a JSON response with:
+                1. Whether more information is needed (boolean)
+                2. Questions to ask user for clarity (array of strings in Uzbek)
+                3. Suggested priority (HIGH/MEDIUM/LOW)
+                4. Estimated time in minutes (number)
                 
-                Analyze this task and determine:
-                1. Is this task description clear and complete? 
-                2. What additional information might be helpful?
-                3. Suggest initial priority and estimated time
-                
-                Respond in JSON format:
+                Example format:
                 {
-                    "needsMoreInfo": boolean,
-                    "questions": ["question1", "question2"],
-                    "suggestedPriority": "HIGH|MEDIUM|LOW",
-                    "suggestedTime": number_in_minutes
+                    "needsMoreInfo": true,
+                    "questions": ["Deadline qachon?", "Boshqalar bilan ishlaysizmi?"],
+                    "suggestedPriority": "HIGH",
+                    "suggestedTime": 120
                 }
-                
-                Ask questions in Uzbek language. Examples:
-                - "Bu vazifa qachon bajarilishi kerak?"
-                - "Bu vazifa qanchalik muhim (yuqori, o'rta, past)?"
-                - "Qo'shimcha tafsilotlar bormi?"
-                - "Bu vazifa uchun qancha vaqt kerak?"
-                
-                Only ask 1-2 most important questions if task is unclear.
             `;
 
             const result = await this.model.generateContent(prompt);
             const response = result.response.text().trim();
 
             try {
-                const parsed = this.parseAIJsonResponse<{
-                    needsMoreInfo: boolean;
-                    questions: string[];
-                    suggestedPriority: string;
-                    suggestedTime: number | null;
-                }>(response);
+                const cleaned = response.replace(/^```json\n|\n```$/g, '');
+                const parsed = JSON.parse(cleaned);
 
                 return {
                     needsMoreInfo: parsed.needsMoreInfo || false,
@@ -596,48 +299,10 @@ export class AiService {
     }
 
     private parsePriority(priorityString: string): Priority {
-        if (priorityString && priorityString.toUpperCase().includes('HIGH')) {
-            return Priority.HIGH;
-        }
-        if (priorityString && priorityString.toUpperCase().includes('LOW')) {
-            return Priority.LOW;
-        }
-        return Priority.MEDIUM;
-    }
-
-    private parseAIJsonResponse<T>(response: string): T {
-        let cleaned = '';
-        try {
-            // Remove markdown code blocks and any other formatting
-            cleaned = response
-                .replace(/```json\s*/gi, '')
-                .replace(/```\s*/g, '')
-                .replace(/`/g, '');
-
-            // Remove leading/trailing whitespace
-            cleaned = cleaned.trim();
-
-            // Remove outer quotes if present
-            if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-                cleaned = cleaned.slice(1, -1);
-            }
-
-            // Try to extract JSON from text if wrapped in other content
-            const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-            if (jsonMatch) {
-                cleaned = jsonMatch[0];
-            }
-
-            // Parse JSON
-            return JSON.parse(cleaned);
-        } catch (error) {
-            this.logger.warn('Failed to parse AI JSON response', {
-                originalResponse: response,
-                cleanedResponse: cleaned,
-                error: error.message,
-            });
-            throw new Error(`Failed to parse AI JSON response: ${error.message}`);
-        }
+        const prio = (priorityString || '').toUpperCase();
+        if (prio.includes('HIGH')) return Priority.HIGH;
+        if (prio.includes('MEDIUM')) return Priority.MEDIUM;
+        return Priority.LOW;
     }
 
     private fallbackTaskAnalysis(taskText: string): {
@@ -656,11 +321,7 @@ export class AiService {
         const hasTimeIndicators = /today|tomorrow|week|month|bugun|ertaga|hafta|oy/i.test(text);
         const hasCompleteInfo = words.length >= 3 && (hasTimeIndicators || hasUrgentKeywords);
 
-        // Enhanced condition - ask more questions for better interaction
-        const needsMoreInfo =
-            text.length < 10 || // Less than 10 characters
-            words.length < 3 || // Less than 3 words
-            !hasCompleteInfo; // Lacks complete context
+        const needsMoreInfo = text.length < 10 || words.length < 3 || !hasCompleteInfo;
 
         const questions: string[] = [];
         if (needsMoreInfo) {
@@ -673,22 +334,11 @@ export class AiService {
             }
         }
 
-        // Estimate priority based on keywords and context
         let priority: Priority = Priority.MEDIUM;
         if (hasUrgentKeywords) {
             priority = Priority.HIGH;
-        } else if (text.length < 15 || /simple|quick|oddiy|tez/i.test(text)) {
+        } else if (text.length < 10 || (!hasTimeIndicators && !hasUrgentKeywords)) {
             priority = Priority.LOW;
-        }
-
-        // Estimate time based on task content
-        let estimatedTime = 60; // default 1 hour
-        if (/quick|tez|simple|oddiy/i.test(text)) {
-            estimatedTime = 30;
-        } else if (/meeting|uchrashuv|call|qo'ng'iroq/i.test(text)) {
-            estimatedTime = 60;
-        } else if (/project|loyiha|complex|murakkab/i.test(text)) {
-            estimatedTime = 180;
         }
 
         return {
@@ -696,16 +346,410 @@ export class AiService {
             questions,
             suggestedData: {
                 priority,
-                estimatedTime,
+                estimatedTime: null,
             },
         };
     }
-}
 
-interface UserAction {
-    type: 'create_task' | 'complete_task' | 'update_task' | 'delete_task';
-    taskId?: string;
-    taskTitle?: string;
-    timestamp: string;
-    priority?: Priority;
+    async generateReportInsights(reportData: {
+        period: string;
+        tasks: Task[];
+        analytics: any;
+        date: string;
+    }): Promise<{ insights: string[]; recommendations: string[] }> {
+        try {
+            this.logger.debug('Generating report insights', {
+                period: reportData.period,
+                taskCount: reportData.tasks.length,
+                productivityScore: reportData.analytics?.productivityScore,
+            });
+
+            const prompt = `
+                Report Analysis Request:
+                
+                Period: ${reportData.period}
+                Date: ${reportData.date}
+                Tasks analyzed: ${reportData.tasks.length}
+                
+                Analytics Summary:
+                - Total tasks: ${reportData.analytics?.totalTasks || 0}
+                - Completed: ${reportData.analytics?.completedTasks || 0}
+                - Completion rate: ${reportData.analytics?.completionRate || 0}%
+                - Productivity score: ${reportData.analytics?.productivityScore || 0}/100
+                - Average completion time: ${reportData.analytics?.averageCompletionTime || 0} minutes
+                - Overdue tasks: ${reportData.analytics?.overdueeTasks || 0}
+                
+                Priority distribution:
+                - High: ${reportData.analytics?.priorityDistribution?.high || 0}
+                - Medium: ${reportData.analytics?.priorityDistribution?.medium || 0}
+                - Low: ${reportData.analytics?.priorityDistribution?.low || 0}
+                
+                Analyze this data and provide:
+                1. Key insights about performance (3-4 insights)
+                2. Actionable recommendations for improvement (3-4 recommendations)
+                
+                Respond in JSON format with insights and recommendations in Uzbek language:
+                {
+                    "insights": ["insight1", "insight2", "insight3"],
+                    "recommendations": ["recommendation1", "recommendation2", "recommendation3"]
+                }
+                
+                Keep insights factual and recommendations practical.
+            `;
+
+            const result = await this.model.generateContent(prompt);
+            const response = result.response.text().trim();
+
+            try {
+                const cleaned = response.replace(/^```json\n|\n```$/g, '');
+                const parsed = JSON.parse(cleaned);
+
+                if (Array.isArray(parsed.insights) && Array.isArray(parsed.recommendations)) {
+                    this.logger.debug('Report insights generated successfully', {
+                        insightsCount: parsed.insights.length,
+                        recommendationsCount: parsed.recommendations.length,
+                    });
+
+                    return {
+                        insights: parsed.insights,
+                        recommendations: parsed.recommendations,
+                    };
+                }
+            } catch (parseError) {
+                this.logger.warn('Failed to parse AI response, using fallback', {
+                    response: response.substring(0, 100),
+                });
+            }
+
+            return this.fallbackGenerateInsights(reportData);
+        } catch (error) {
+            this.logger.error('Failed to generate report insights with AI, using fallback', error, {
+                context: 'AiService',
+                period: reportData.period,
+            });
+            return this.fallbackGenerateInsights(reportData);
+        }
+    }
+
+    private fallbackGenerateInsights(reportData: {
+        period: string;
+        tasks: Task[];
+        analytics: any;
+    }): { insights: string[]; recommendations: string[] } {
+        const analytics = reportData.analytics || {};
+        const insights: string[] = [];
+        const recommendations: string[] = [];
+
+        // Generate insights based on analytics
+        const completionRate = analytics.completionRate || 0;
+        const productivityScore = analytics.productivityScore || 0;
+        const overdueCount = analytics.overdueeTasks || 0;
+        const totalTasks = analytics.totalTasks || 0;
+
+        // Completion rate insights
+        if (completionRate >= 80) {
+            insights.push("Siz bajarilish darajasi bo'yicha ajoyib natijalar ko'rsatyapsiz");
+        } else if (completionRate >= 60) {
+            insights.push('Bajarilish darajangiz yaxshi, lekin yaxshilash mumkin');
+        } else {
+            insights.push('Vazifalarni bajarishda qiyinchiliklar mavjud');
+        }
+
+        // Productivity insights
+        if (productivityScore >= 85) {
+            insights.push('Samaradorlik darajangiz juda yuqori');
+        } else if (productivityScore >= 65) {
+            insights.push("O'rtacha samaradorlik ko'rsatkichingiz normal");
+        } else {
+            insights.push('Samaradorlikni oshirish zarur');
+        }
+
+        // Overdue insights
+        if (overdueCount === 0 && totalTasks > 0) {
+            insights.push("Barcha vazifalar o'z vaqtida bajarilmoqda");
+        } else if (overdueCount > 0) {
+            insights.push(`${overdueCount} ta vazifa muddati o\'tgan`);
+        }
+
+        // Task volume insights
+        if (totalTasks > 0) {
+            if (reportData.period === 'daily' && totalTasks >= 5) {
+                insights.push('Kunlik vazifalar soni yetarli');
+            } else if (reportData.period === 'weekly' && totalTasks >= 20) {
+                insights.push('Haftalik faolligingiz yuqori');
+            }
+        }
+
+        // Generate recommendations
+        if (completionRate < 70) {
+            recommendations.push("Vazifalarni kichikroq qismlarga bo'ling");
+            recommendations.push('Kunlik rejani aniqroq belgilang');
+        }
+
+        if (overdueCount > 0) {
+            recommendations.push('Muddatlarni realistik belgilang');
+            recommendations.push('Eslatma tizimidan foydalaning');
+        }
+
+        if (productivityScore < 60) {
+            recommendations.push("Eng muhim vazifalarni birinchi o'ringa qo'ying");
+            recommendations.push("Chalg'ituvchi omillarni kamaytiring");
+        }
+
+        if (analytics.priorityDistribution?.high > analytics.priorityDistribution?.low) {
+            recommendations.push('Muhimlik darajalarini muvozanatlashtiring');
+        }
+
+        // Ensure we have at least some recommendations
+        if (recommendations.length === 0) {
+            recommendations.push('Doimiy takomillashda davom eting');
+            recommendations.push("O'z yutuqlaringizni tahlil qiling");
+        }
+
+        return {
+            insights: insights.slice(0, 4), // Limit to 4 insights
+            recommendations: recommendations.slice(0, 4), // Limit to 4 recommendations
+        };
+    }
+
+    async optimizeSchedule(tasks: Task[]): Promise<Task[]> {
+        try {
+            this.logger.debug('Optimizing task schedule', {
+                taskCount: tasks.length,
+            });
+
+            if (tasks.length === 0) {
+                return tasks;
+            }
+
+            const prompt = `
+                Task Schedule Optimization:
+                
+                Tasks to optimize: ${tasks.length}
+                
+                Task details:
+                ${tasks
+                    .map(
+                        (task, index) => `
+                ${index + 1}. "${task.title}"
+                   Priority: ${task.priority}
+                   Deadline: ${task.deadline ? task.deadline.toISOString() : 'None'}
+                   Status: ${task.status}
+                   Estimated time: ${task.estimatedTime || 'Unknown'} minutes
+                `,
+                    )
+                    .join('\n')}
+                
+                Optimize the order of these tasks based on:
+                1. Priority (HIGH > MEDIUM > LOW)
+                2. Deadlines (urgent first)
+                3. Estimated completion time
+                4. Task dependencies and workflow
+                
+                Return the optimized order as JSON array of task indices (0-based):
+                {"order": [2, 0, 1, 3, ...]}
+                
+                Keep the optimization practical and logical.
+            `;
+
+            const result = await this.model.generateContent(prompt);
+            const response = result.response.text().trim();
+
+            try {
+                const cleaned = response.replace(/^```json\n|\n```$/g, '');
+                const parsed = JSON.parse(cleaned);
+
+                if (Array.isArray(parsed.order) && parsed.order.length === tasks.length) {
+                    // Validate indices
+                    const validOrder = parsed.order.every(
+                        (index: number) =>
+                            Number.isInteger(index) && index >= 0 && index < tasks.length,
+                    );
+
+                    if (validOrder) {
+                        const optimizedTasks = parsed.order.map((index: number) => tasks[index]);
+
+                        this.logger.debug('Task schedule optimized successfully', {
+                            originalOrder: tasks.map((t) => t.title.substring(0, 20)),
+                            optimizedOrder: optimizedTasks.map((t) => t.title.substring(0, 20)),
+                        });
+
+                        return optimizedTasks;
+                    }
+                }
+            } catch (parseError) {
+                this.logger.warn('Failed to parse AI schedule optimization, using fallback', {
+                    response: response.substring(0, 100),
+                });
+            }
+
+            return this.fallbackOptimizeSchedule(tasks);
+        } catch (error) {
+            this.logger.error('Failed to optimize schedule with AI, using fallback', error, {
+                context: 'AiService',
+            });
+            return this.fallbackOptimizeSchedule(tasks);
+        }
+    }
+
+    private fallbackOptimizeSchedule(tasks: Task[]): Task[] {
+        // Simple fallback optimization based on priority and deadline
+        return [...tasks].sort((a, b) => {
+            // First, sort by priority
+            const priorityOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+            const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+
+            if (priorityDiff !== 0) {
+                return priorityDiff;
+            }
+
+            // Then by deadline (earlier deadlines first)
+            if (a.deadline && b.deadline) {
+                return a.deadline.getTime() - b.deadline.getTime();
+            }
+
+            if (a.deadline && !b.deadline) {
+                return -1; // Tasks with deadlines come first
+            }
+
+            if (!a.deadline && b.deadline) {
+                return 1;
+            }
+
+            // Finally by estimated time (shorter tasks first for quick wins)
+            const timeA = a.estimatedTime || 60; // Default to 60 minutes if not set
+            const timeB = b.estimatedTime || 60;
+
+            return timeA - timeB;
+        });
+    }
+
+    // In AiService
+
+    async understandUserIntent(
+        messageText: string,
+        userId: string /* for context if needed */,
+    ): Promise<{
+        intent: string; // e.g., 'CREATE_TASK', 'CREATE_REMINDER', 'CHITCHAT', 'LIST_TASKS', 'UNKNOWN'
+        entities: Record<string, any>; // Extracted data like title, deadline
+        isComplete: boolean;
+        clarificationQuestions?: string[];
+    }> {
+        try {
+            this.logger.debug('Understanding user intent', { text: messageText.substring(0, 50) });
+            const prompt = `
+            Foydalanuvchining Telegramdagi xabari: "${messageText}"
+
+            Bu xabarni tahlil qilib, uning asosiy maqsadini ("intent") va xabardagi muhim ma'lumotlarni ("entities") JSON formatida aniqlab ber.
+            
+            Mumkin bo'lgan "intent"lar:
+            - "CREATE_TASK": Agar foydalanuvchi biror ish qilish kerakligini aytsa (masalan, "non olishim kerak", "prezentatsiya tayyorlash").
+            - "CREATE_REMINDER": Agar foydalanuvchi biror narsani eslatishni so'rasa (masalan, "ertaga soat 5da qo'ng'iroq qilishni eslat").
+            - "LIST_TASKS": Agar foydalanuvchi vazifalar ro'yxatini so'rasa.
+            - "CHITCHAT": Agar xabar shunchaki suhbat yoki savol bo'lsa va aniq vazifa/eslatmaga tegishli bo'lmasa.
+            - "UNKNOWN": Agar maqsad umuman tushunarsiz bo'lsa.
+
+            "entities" ichida quyidagilarni ajratishga harakat qil:
+            - "actionPhrase": Vazifa yoki eslatmaning asosiy matni (masalan, "non olish", "prezentatsiya tayyorlash", "qo'ng'iroq qilish").
+            - "deadline": Agar sana va/yoki vaqt aniq aytilgan bo'lsa, uni ISO 8601 formatida (YYYY-MM-DDTHH:mm:ss) ko'rsat. Agar faqat sana bo'lsa, T00:00:00 ishlat. Nisbiy vaqtlarni (masalan, "ertaga", "2 soatdan keyin") ham shu formatga o'tkazishga harakat qil (hozirgi vaqtni YYYY-MM-DDTHH:mm:ss deb hisobla).
+            - "persoNames": Agar xabarda odam ismlari bo'lsa (masalan, "Alisher bilan uchrashuv").
+            - "location_names": Agar joy nomlari bo'lsa.
+
+            Shuningdek, quyidagi boolean qiymatni ham qaytar:
+            - "isInformationSufficient": Agar "CREATE_TASK" yoki "CREATE_REMINDER" maqsadi uchun asosiy ma'lumotlar (masalan, "actionPhrase") yetarli bo'lsa, 'true', aks holda 'false'.
+
+            Agar "isInformatioSsufficient" 'false' bo'lsa, yetishmayotgan ma'lumotlarni so'rash uchun o'zbek tilida 1-2 ta aniqlashtiruvchi savolni "clarificationQuestions" massivida qaytar.
+
+            Faqat JSON obyektini qaytar. Boshqa hech qanday matn qo'shma.
+
+            Misollar:
+            Xabar: "Ertaga soat 3da Alisher bilan uchrashishim kerak."
+            Javob:
+            {
+              "intent": "CREATE_TASK",
+              "entities": {
+                "actionPhrase": "Alisher bilan uchrashish",
+                "deadline": "YYYY-MM-(ErtangiSana)T15:00:00", 
+                "persoNames": ["Alisher"]
+              },
+              "isInformationSufficient": true,
+              "clarificationQuestions": []
+            }
+
+            Xabar: "Sut olishni unutma."
+            Javob:
+            {
+              "intent": "CREATE_TASK",
+              "entities": {
+                "actionPhrase": "Sut olish"
+              },
+              "isInformationSufficient": false,
+              "clarificationQuestions": ["Qachonga sut olish kerak?", "Qayerdan sut olish kerak? (ixtiyoriy)"]
+            }
+
+            Xabar: "Salom, qandaysan?"
+            Javob:
+            {
+              "intent": "CHITCHAT",
+              "entities": {},
+              "isInformationSufficient": true,
+              "clarificationQuestions": []
+            }
+        `;
+
+            const result = await this.model.generateContent(prompt);
+            const response = result.response.text().trim();
+
+            this.logger.debug('User intent understood', {
+                response: response.substring(0, 100),
+            });
+
+            try {
+                const cleaned = response.replace(/^```json\n|\n```$/g, '');
+                const parsed = JSON.parse(cleaned);
+
+                // Validate the response structure
+                if (
+                    typeof parsed.intent === 'string' &&
+                    typeof parsed.isInformationSufficient === 'boolean' &&
+                    typeof parsed.entities === 'object' &&
+                    (Array.isArray(parsed.clarificationQuestions) ||
+                        parsed.clarificationQuestions === undefined)
+                ) {
+                    return {
+                        intent: parsed.intent,
+                        entities: parsed.entities || {},
+                        isComplete: parsed.isInformationSufficient,
+                        clarificationQuestions: parsed.clarificationQuestions || [],
+                    };
+                } else {
+                    this.logger.warn('Invalid AI response format, using fallback', {
+                        response: cleaned.substring(0, 100),
+                    });
+                }
+            } catch (parseError) {
+                this.logger.warn('Failed to parse AI response, using fallback', {
+                    response: response.substring(0, 100),
+                });
+            }
+
+            const DUMMY_AI_RESPONSE = {
+                intent: 'UNKNOWN',
+                entities: {},
+                isComplete: false, // Aslida 'isInformatioSsufficient' bo'lishi kerak
+                clarificationQuestions: ['Kechirasiz, tushunmadim. Aniqroq ayta olasizmi?'],
+            };
+            return DUMMY_AI_RESPONSE;
+        } catch (error) {
+            this.logger.error('Failed to understand user intent', error, { context: 'AiService' });
+            return {
+                intent: 'UNKNOWN',
+                entities: {},
+                isComplete: false,
+                clarificationQuestions: [
+                    "AI bilan bog'lanishda xatolik. Iltimos, /add buyrug'idan foydalaning.",
+                ],
+            };
+        }
+    }
 }

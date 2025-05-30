@@ -4,9 +4,6 @@ import { LoggerService } from '../../common/services/logger.service';
 
 @Injectable()
 export class BotLoggerService {
-    botInfo(message: string) {
-        this.logger.info(message);
-    }
     constructor(private readonly logger: LoggerService) {}
 
     private formatContext(ctx: Context): Record<string, any> {
@@ -24,41 +21,6 @@ export class BotLoggerService {
         };
     }
 
-    // Command and event logging
-    commandReceived(ctx: Context, command: string): void {
-        this.logger.info(`Command received: ${command}`, this.formatContext(ctx));
-    }
-
-    messageReceived(ctx: Context): void {
-        this.logger.info('Message received', this.formatContext(ctx));
-    }
-
-    callbackReceived(ctx: Context, data: string): void {
-        this.logger.info(`Callback received: ${data}`, this.formatContext(ctx));
-    }
-
-    // User-related logging
-    userRegistered(ctx: Context, userId: string): void {
-        this.logger.info('User registered successfully', {
-            ...this.formatContext(ctx),
-            registeredUserId: userId,
-        });
-    }
-
-    userRegistrationFailed(ctx: Context, error: Error): void {
-        this.logger.error('User registration failed', error, this.formatContext(ctx));
-    }
-
-    // Bot lifecycle logging
-    botStarted(): void {
-        this.logger.info('Telegram bot started successfully', { service: 'TelegramBot' });
-    }
-
-    botStopped(): void {
-        this.logger.info('Telegram bot stopped successfully', { service: 'TelegramBot' });
-    }
-
-    // Error handling
     botError(ctx: Context | undefined, error: Error): void {
         this.logger.error(
             'Bot error occurred',
@@ -67,18 +29,35 @@ export class BotLoggerService {
         );
     }
 
-    // Debug logging
     debug(message: string, ctx?: Context): void {
         this.logger.debug(message, ctx ? this.formatContext(ctx) : { service: 'TelegramBot' });
     }
 
-    // General info logging
     info(message: string, ctx?: Context): void {
         this.logger.info(message, ctx ? this.formatContext(ctx) : { service: 'TelegramBot' });
     }
 
-    // Warning logging
     warn(message: string, ctx?: Context): void {
         this.logger.warn(message, ctx ? this.formatContext(ctx) : { service: 'TelegramBot' });
+    }
+
+    messageReceived(ctx: Context): void {
+        this.debug('Message received and processed', ctx);
+    }
+
+    commandReceived(ctx: Context, command: string): void {
+        this.debug(`Command received: ${command}`, ctx);
+    }
+
+    callbackReceived(ctx: Context, data: string): void {
+        this.debug(`Callback received: ${data}`, ctx);
+    }
+
+    userRegistered(ctx: Context, userId: string): void {
+        this.info(`User registered: ${userId}`, ctx);
+    }
+
+    userRegistrationFailed(ctx: Context, error: Error): void {
+        this.botError(ctx, error);
     }
 }

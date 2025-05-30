@@ -10,15 +10,17 @@ export class TasksService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly scheduler: SchedulerService,
-        private readonly aiService: AiService, // Inject AiService
-        private readonly logger: LoggerService, // Inject LoggerService
+        private readonly aiService: AiService,
+        private readonly logger: LoggerService,
     ) {}
 
     async createTaskWithAISuggestions(
         userId: string,
         taskText: string,
-        userTimezone: string, // Already part of task model, but good for context
+        userTimezone: string,
     ): Promise<Task> {
+        this.logger.debug('Analyzing task with AI', { userId, taskText });
+
         // 1. Get AI suggestions for priority and estimated time
         const priority = await this.aiService.analyzePriority(taskText);
         const estimatedTime = await this.aiService.estimateTaskDuration(taskText);
@@ -28,12 +30,7 @@ export class TasksService {
             title: taskText,
             priority,
             estimatedTime: estimatedTime ?? undefined,
-            // The userTimezone is primarily for display or deadline interpretation,
-            // the task.timezone field in Prisma schema has a default.
-            // We can set it here if needed, or rely on default/update later.
-            // For now, let's assume `createTask` handles the timezone if it's part of its 'data' param.
-            // If task model's timezone should be user's timezone, pass it here.
-            timezone: userTimezone, // Assuming task.timezone should be user's timezone
+            timezone: userTimezone,
         });
 
         // 3. Get AI-suggested deadline for the created task
@@ -44,7 +41,10 @@ export class TasksService {
             task = await this.updateTask(task.id, userId, {
                 deadline: suggestedDeadline,
             });
-            console.log(`Task ${task.id} deadline updated to ${suggestedDeadline}`);
+            this.logger.debug('Task deadline updated', {
+                taskId: task.id,
+                deadline: suggestedDeadline,
+            });
         }
 
         return task;
@@ -62,8 +62,6 @@ export class TasksService {
             timezone?: string;
         },
     ): Promise<Task> {
-        const startTime = Date.now();
-
         try {
             const task = await this.prisma.task.create({
                 data: {
@@ -72,18 +70,11 @@ export class TasksService {
                 },
             });
 
-            const duration = Date.now() - startTime;
-
-            // Log successful task creation
-            this.logger.logUserAction('TASK_CREATED', userId, {
+            this.logger.info('Task created', {
                 taskId: task.id,
-                title: task.title.substring(0, 50),
-                priority: task.priority,
+                userId,
                 hasDeadline: !!task.deadline,
-                estimatedTime: task.estimatedTime,
             });
-
-            this.logger.logDatabaseOperation('CREATE', 'task', duration, true);
 
             // Schedule reminder if deadline is set
             if (task.deadline) {
@@ -93,39 +84,29 @@ export class TasksService {
                     title: task.title,
                     description: task.description ?? undefined,
                 });
+                this.logger.debug('Reminder scheduled', {
+                    taskId: task.id,
+                    deadline: task.deadline,
+                });
             }
 
             return task;
         } catch (error) {
-            const duration = Date.now() - startTime;
-
-            this.logger.logDatabaseOperation('CREATE', 'task', duration, false);
             this.logger.error('Failed to create task', error, { context: 'TasksService', userId });
             throw error;
         }
     }
 
     async getUserTasks(userId: string): Promise<Task[]> {
-        const startTime = Date.now();
-
         try {
             const tasks = await this.prisma.task.findMany({
                 where: { userId },
                 orderBy: [{ priority: 'desc' }, { deadline: 'asc' }, { createdAt: 'desc' }],
             });
 
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('READ', 'task', duration, true);
-
-            this.logger.logUserAction('TASKS_RETRIEVED', userId, {
-                taskCount: tasks.length,
-                hasOverdueTasks: tasks.some((task) => task.deadline && task.deadline < new Date()),
-            });
-
+            this.logger.debug('Retrieved user tasks', { userId, count: tasks.length });
             return tasks;
         } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('READ', 'task', duration, false);
             this.logger.error('Failed to retrieve user tasks', error, {
                 context: 'TasksService',
                 userId,
@@ -135,34 +116,24 @@ export class TasksService {
     }
 
     async updateTask(taskId: string, userId: string, data: Partial<Task>): Promise<Task> {
-        const startTime = Date.now();
-
         try {
             const task = await this.prisma.task.update({
                 where: {
                     id: taskId,
-                    userId, // Ensure the task belongs to the user
+                    userId,
                 },
                 data,
             });
 
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('UPDATE', 'task', duration, true);
-
-            // Log the task update
-            this.logger.logUserAction('TASK_UPDATED', userId, {
-                taskId: task.id,
+            this.logger.info('Task updated', {
+                taskId,
+                userId,
                 updatedFields: Object.keys(data),
-                priority: task.priority,
-                status: task.status,
             });
 
             // Update reminder if deadline changed
             if ('deadline' in data) {
-                // Cancel existing reminder
                 await this.scheduler.cancelReminder(taskId);
-
-                // Schedule new reminder if deadline is set
                 if (data.deadline) {
                     await this.scheduler.scheduleReminder(data.deadline, {
                         taskId: task.id,
@@ -170,24 +141,15 @@ export class TasksService {
                         title: task.title,
                         description: task.description ?? undefined,
                     });
-
-                    this.logger.logBusinessEvent({
-                        event: 'REMINDER_SCHEDULED',
-                        data: {
-                            taskId: task.id,
-                            userId: task.userId,
-                            deadline: data.deadline,
-                        },
-                        userId: task.userId,
-                        context: 'TasksService',
+                    this.logger.debug('Task reminder rescheduled', {
+                        taskId,
+                        deadline: data.deadline,
                     });
                 }
             }
 
             return task;
         } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('UPDATE', 'task', duration, false);
             this.logger.error('Failed to update task', error, {
                 context: 'TasksService',
                 taskId,
@@ -199,44 +161,18 @@ export class TasksService {
     }
 
     async deleteTask(taskId: string, userId: string): Promise<Task> {
-        const startTime = Date.now();
-
         try {
-            // Cancel any scheduled reminders first
             await this.scheduler.cancelReminder(taskId);
-
             const task = await this.prisma.task.delete({
                 where: {
                     id: taskId,
-                    userId, // Ensure the task belongs to the user
+                    userId,
                 },
             });
 
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('DELETE', 'task', duration, true);
-
-            this.logger.logUserAction('TASK_DELETED', userId, {
-                taskId: task.id,
-                title: task.title.substring(0, 50),
-                priority: task.priority,
-                wasCompleted: task.status === Status.DONE,
-            });
-
-            this.logger.logBusinessEvent({
-                event: 'REMINDER_CANCELLED',
-                data: {
-                    taskId: task.id,
-                    userId: task.userId,
-                    reason: 'TASK_DELETED',
-                },
-                userId: task.userId,
-                context: 'TasksService',
-            });
-
+            this.logger.info('Task deleted', { taskId, userId });
             return task;
         } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('DELETE', 'task', duration, false);
             this.logger.error('Failed to delete task', error, {
                 context: 'TasksService',
                 taskId,
@@ -247,8 +183,6 @@ export class TasksService {
     }
 
     async getUpcomingTasks(userId: string): Promise<Task[]> {
-        const startTime = Date.now();
-
         try {
             const now = new Date();
             const tasks = await this.prisma.task.findMany({
@@ -264,18 +198,14 @@ export class TasksService {
                 },
             });
 
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('READ', 'task', duration, true);
-
-            this.logger.logUserAction('UPCOMING_TASKS_RETRIEVED', userId, {
-                upcomingTaskCount: tasks.length,
+            this.logger.debug('Retrieved upcoming tasks', {
+                userId,
+                count: tasks.length,
                 nearestDeadline: tasks.length > 0 ? tasks[0].deadline : null,
             });
 
             return tasks;
         } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.logDatabaseOperation('READ', 'task', duration, false);
             this.logger.error('Failed to retrieve upcoming tasks', error, {
                 context: 'TasksService',
                 userId,

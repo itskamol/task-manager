@@ -44,26 +44,26 @@ echo "🔧 Checking dependencies..."
 
 # Check if node_modules exists
 if [ ! -d "node_modules" ]; then
-    echo "❌ Dependencies not installed. Running npm install..."
-    npm install
+    echo "❌ Dependencies not installed. Running pnpm install..."
+    pnpm install
 else
     echo "✅ Dependencies are installed"
 fi
 
 # Check if @google/generative-ai is installed
-if npm list @google/generative-ai > /dev/null 2>&1; then
+if pnpm list @google/generative-ai > /dev/null 2>&1; then
     echo "✅ @google/generative-ai is installed"
 else
     echo "❌ @google/generative-ai not found. Installing..."
-    npm install @google/generative-ai
+    pnpm install @google/generative-ai
 fi
 
 # Check if date-fns is installed
-if npm list date-fns > /dev/null 2>&1; then
+if pnpm list date-fns > /dev/null 2>&1; then
     echo "✅ date-fns is installed"
 else
     echo "❌ date-fns not found. Installing..."
-    npm install date-fns
+    pnpm install date-fns
 fi
 
 echo ""
@@ -74,12 +74,12 @@ if [ -d "node_modules/.prisma" ]; then
     echo "✅ Prisma client is generated"
 else
     echo "🔄 Generating Prisma client..."
-    npx prisma generate
+    pnpm dlx prisma generate
 fi
 
 echo ""
 echo "🏗️  Building the application..."
-npm run build
+pnpm run build
 
 if [ $? -eq 0 ]; then
     echo "✅ Application built successfully"
@@ -94,8 +94,8 @@ echo ""
 echo "📋 Next steps:"
 echo "1. Ensure PostgreSQL is running"
 echo "2. Ensure Redis is running" 
-echo "3. Run: npx prisma migrate dev"
-echo "4. Start the application: npm run start:dev"
+echo "3. Run: pnpm dlx prisma migrate dev"
+echo "4. Start the application: pnpm run start:dev"
 echo ""
 echo "🤖 New bot commands available:"
 echo "• /daily_report - Get today's productivity report"

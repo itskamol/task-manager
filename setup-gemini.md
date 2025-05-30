@@ -67,31 +67,31 @@ REDIS_URL="redis://localhost:6379"
 ### 3. Install Dependencies
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 4. Database Setup
 
 ```bash
 # Generate Prisma client
-npx prisma generate
+pnpm dlx prisma generate
 
 # Run database migrations
-npx prisma migrate dev
+pnpm dlx prisma migrate dev
 
 # (Optional) View database in Prisma Studio
-npx prisma studio
+pnpm dlx prisma studio
 ```
 
 ### 5. Start the Application
 
 ```bash
 # Development mode
-npm run start:dev
+pnpm run start:dev
 
 # Production mode
-npm run build
-npm run start:prod
+pnpm run build
+pnpm run start:prod
 ```
 
 ## 🤖 Testing the AI Features

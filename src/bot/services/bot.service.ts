@@ -2,7 +2,8 @@ import { Injectable, OnModuleInit, OnApplicationShutdown } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
 import { BotLoggerService } from './bot-logger.service';
-import { BotCommandRegistryService } from './bot-command-registry.service'; // Import the new service
+import { BotCommandRegistryService } from './bot-command-registry.service';
+import { LoggerService } from '../../common/services/logger.service';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnApplicationShutdown {
@@ -11,22 +12,76 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     constructor(
         private readonly configService: ConfigService,
         private readonly logger: BotLoggerService,
-        private readonly commandRegistryService: BotCommandRegistryService, // Inject the new service
+        private readonly commandRegistryService: BotCommandRegistryService,
+        private readonly appLogger: LoggerService,
     ) {
         const token = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
 
         if (!token) {
             this.logger.botError(undefined, new Error('TELEGRAM_BOT_TOKEN is not defined'));
+            this.appLogger.logSecurityEvent('MISSING_BOT_TOKEN', {
+                error: 'TELEGRAM_BOT_TOKEN is not defined',
+                timestamp: new Date().toISOString()
+            }, 'high');
             throw new Error('TELEGRAM_BOT_TOKEN is not defined');
         }
 
         this.bot = new Bot(token);
         this.setupErrorHandling();
+        this.setupMetricsTracking();
     }
 
     private setupErrorHandling(): void {
         this.bot.catch((err) => {
             this.logger.botError(undefined, err);
+            this.appLogger.logSecurityEvent('BOT_ERROR', {
+                error: err.message,
+                stack: err.stack,
+                timestamp: new Date().toISOString()
+            }, 'medium');
+        });
+    }
+
+    private setupMetricsTracking(): void {
+        // Track all incoming updates
+        this.bot.use(async (ctx, next) => {
+            const startTime = Date.now();
+            
+            try {
+                await next();
+                const duration = Date.now() - startTime;
+                
+                // Log successful bot interaction
+                this.appLogger.logBotInteraction(
+                    ctx.update.message ? 'message' : 
+                    ctx.update.callback_query ? 'callback' : 'command',
+                    {
+                        userId: ctx.from?.id,
+                        username: ctx.from?.username,
+                        chatId: ctx.chat?.id,
+                        updateType: ctx.update.update_id ? 'update_id' : 'unknown',
+                        command: ctx.message?.text?.startsWith('/') ? ctx.message.text.split(' ')[0] : undefined
+                    }
+                );
+                
+                this.appLogger.logPerformance({
+                    operation: 'BOT_UPDATE_PROCESSING',
+                    duration,
+                    context: 'TelegramBot'
+                });
+                
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                
+                this.appLogger.logPerformance({
+                    operation: 'BOT_UPDATE_PROCESSING',
+                    duration,
+                    context: 'TelegramBot',
+                    metadata: { success: false, error: error.message }
+                });
+                
+                throw error;
+            }
         });
     }
 

@@ -37,7 +37,15 @@ export class AiService {
     }
 
     async analyzePriority(title: string, description?: string): Promise<Priority> {
+        const startTime = Date.now();
+        
         try {
+            // Log AI operation start
+            this.logger.logAiOperation('PRIORITY_ANALYSIS_START', 0, true, {
+                title: title.substring(0, 50), // Log truncated title for privacy
+                hasDescription: !!description
+            });
+
             const prompt = `
                 Task Analysis Request:
                 
@@ -57,13 +65,28 @@ export class AiService {
 
             const result = await this.model.generateContent(prompt);
             const response = result.response.text().trim().toUpperCase();
+            const duration = Date.now() - startTime;
+
+            // Log successful AI operation
+            this.logger.logAiOperation('PRIORITY_ANALYSIS', duration, true, {
+                response,
+                title: title.substring(0, 50)
+            });
 
             // Validate and return priority
             if (response.includes('HIGH')) return Priority.HIGH;
             if (response.includes('MEDIUM')) return Priority.MEDIUM;
             return Priority.LOW;
         } catch (error) {
-            this.logger.error('Failed to analyze priority with AI, using fallback', error);
+            const duration = Date.now() - startTime;
+            
+            // Log failed AI operation
+            this.logger.logAiOperation('PRIORITY_ANALYSIS', duration, false, {
+                error: error.message,
+                title: title.substring(0, 50)
+            });
+            
+            this.logger.error('Failed to analyze priority with AI, using fallback', error, { context: 'AiService' });
             return this.fallbackAnalyzePriority(title, description);
         }
     }

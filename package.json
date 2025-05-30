@@ -1,8 +1,8 @@
 {
-  "name": "task-manager",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "name": "gemini-ai-task-manager",
+  "version": "1.0.0",
+  "description": "AI-powered task management Telegram bot with Gemini integration",
+  "author": "itskamol",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -18,7 +18,19 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json",
-    "test:e2e:cov": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --coverage"
+    "test:e2e:cov": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --coverage",
+    "version:patch": "pnpm version patch --no-git-tag-version",
+    "version:minor": "pnpm version minor --no-git-tag-version",
+    "version:major": "pnpm version major --no-git-tag-version",
+    "version:alpha": "pnpm version prerelease --preid=alpha --no-git-tag-version",
+    "version:beta": "pnpm version prerelease --preid=beta --no-git-tag-version",
+    "version:rc": "pnpm version prerelease --preid=rc --no-git-tag-version",
+    "release:patch": "node scripts/version.mjs patch",
+    "release:minor": "node scripts/version.mjs minor",
+    "release:major": "node scripts/version.mjs major",
+    "release:alpha": "node scripts/version.mjs prerelease --preid=alpha",
+    "release:beta": "node scripts/version.mjs prerelease --preid=beta",
+    "release:rc": "node scripts/version.mjs prerelease --preid=rc"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

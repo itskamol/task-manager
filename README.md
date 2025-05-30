@@ -1,31 +1,39 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🤖 Gemini AI Task Manager
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A modern, intelligent task management system powered by Google's Gemini AI, built with NestJS and integrated with Telegram Bot.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## ✨ Features
 
-## Description
+- **🤖 AI-Powered Task Management**: Leverage Google Gemini AI for smart task analysis, priority suggestions, and deadline recommendations
+- **📱 Telegram Bot Integration**: Seamless task management through Telegram with interactive commands
+- **⏰ Smart Scheduling**: Automated reminders and intelligent deadline suggestions
+- **📊 Advanced Logging**: Production-ready logging with performance metrics and business event tracking
+- **🔄 Semantic Versioning**: Automated version management with comprehensive changelog
+- **🗄️ PostgreSQL Database**: Robust data persistence with Prisma ORM
+- **🚀 Production Ready**: Comprehensive error handling, monitoring, and deployment-ready configuration
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🛠️ Tech Stack
 
-## Project setup
+- **Backend**: NestJS (Node.js)
+- **Database**: PostgreSQL with Prisma ORM
+- **AI**: Google Gemini API
+- **Bot**: Telegram Bot API (Grammy framework)
+- **Task Queue**: Bull Queue with Redis
+- **Logging**: Winston with structured logging
+- **Package Manager**: PNPM
+- **Language**: TypeScript
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the [`/docs`](./docs/) directory:
+
+- **[📋 Complete Documentation Index](./docs/README.md)** - Overview of all documentation
+- **[🚀 Setup Guide](./docs/setup/setup-gemini.md)** - Get started with Gemini AI setup
+- **[💡 Feature Documentation](./docs/features/)** - Detailed feature explanations
+- **[📈 Migration Reports](./docs/migrations/)** - Technical migration details
+- **[📊 Implementation Reports](./docs/reports/)** - Development progress and fixes
+
+## 🚀 Quick Start
 
 ```bash
 $ pnpm install

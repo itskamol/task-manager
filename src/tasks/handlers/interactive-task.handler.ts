@@ -6,6 +6,7 @@ import { SessionService } from '../../bot/services/session.service';
 import { SessionState, TaskCreationData } from '../../bot/interfaces/session.interface';
 import { Priority } from '@prisma/client';
 import { LoggerService } from '../../common/services/logger.service';
+import { UserService } from '../../common/services/user.service';
 
 @Injectable()
 export class InteractiveTaskHandler {
@@ -14,6 +15,7 @@ export class InteractiveTaskHandler {
         private readonly aiService: AiService,
         private readonly sessionService: SessionService,
         private readonly logger: LoggerService,
+        private readonly userService: UserService,
     ) {}
 
     async handleTaskCreation(ctx: Context, taskText: string): Promise<void> {
@@ -224,10 +226,20 @@ export class InteractiveTaskHandler {
         taskText: string,
         suggestedData: any,
     ): Promise<void> {
-        const userId = ctx.from?.id?.toString();
-        if (!userId) return;
+        const telegramId = ctx.from?.id?.toString();
+        if (!telegramId) return;
 
         try {
+            // Ensure user exists before creating task
+            await this.ensureUserExists(ctx, telegramId);
+
+            // Get the actual user record from database
+            const user = await this.userService.findByTelegramId(telegramId);
+            if (!user) {
+                await ctx.reply("❌ Foydalanuvchi ma'lumotlarini olishda xatolik.");
+                return;
+            }
+
             const taskData: TaskCreationData = {
                 title: taskText,
                 priority: suggestedData.priority || Priority.MEDIUM,
@@ -236,7 +248,7 @@ export class InteractiveTaskHandler {
             };
 
             const task = await this.tasksService.createTaskWithAISuggestions(
-                userId,
+                user.id, // Use actual user UUID, not Telegram ID
                 taskText,
                 taskData.timezone || 'Asia/Tashkent',
             );
@@ -266,13 +278,24 @@ export class InteractiveTaskHandler {
     }
 
     private async createFinalTask(ctx: Context): Promise<void> {
-        const userId = ctx.from?.id?.toString();
+        const telegramId = ctx.from?.id?.toString();
         const chatId = ctx.chat?.id;
 
-        if (!userId || !chatId) return;
+        if (!telegramId || !chatId) return;
 
         try {
-            const session = this.sessionService.getSession(userId, chatId);
+            // Ensure user exists before creating task
+            await this.ensureUserExists(ctx, telegramId);
+
+            // Get the actual user record from database
+            const user = await this.userService.findByTelegramId(telegramId);
+            if (!user) {
+                await ctx.reply("❌ Foydalanuvchi ma'lumotlarini olishda xatolik.");
+                this.sessionService.clearSession(telegramId, chatId);
+                return;
+            }
+
+            const session = this.sessionService.getSession(telegramId, chatId);
             const { taskTitle, taskDescription, priority, estimatedTime, deadline } = session.data;
 
             const taskData: TaskCreationData = {
@@ -285,7 +308,7 @@ export class InteractiveTaskHandler {
             };
 
             const task = await this.tasksService.createTaskWithAISuggestions(
-                userId,
+                user.id, // Use the actual user UUID, not Telegram ID
                 taskData.title,
                 taskData.timezone || 'Asia/Tashkent',
             );
@@ -313,11 +336,11 @@ export class InteractiveTaskHandler {
             await ctx.reply(responseText, { parse_mode: 'Markdown' });
 
             // Clear session
-            this.sessionService.clearSession(userId, chatId);
+            this.sessionService.clearSession(telegramId, chatId);
         } catch (error) {
             this.logger.error('Error in createFinalTask', error);
             await ctx.reply("❌ Vazifa yaratishda xatolik yuz berdi. Qayta urinib ko'ring.");
-            this.sessionService.clearSession(userId, chatId);
+            this.sessionService.clearSession(telegramId, chatId);
         }
     }
 
@@ -479,6 +502,24 @@ export class InteractiveTaskHandler {
             await this.processQuestionResponse(ctx, response);
         } else if (session.state === SessionState.CONFIRMING_TASK) {
             await this.processConfirmation(ctx, response);
+        }
+    }
+
+    private async ensureUserExists(ctx: Context, userId: string): Promise<void> {
+        try {
+            const telegramUser = ctx.from;
+            if (!telegramUser) {
+                throw new Error('Telegram user data not available');
+            }
+
+            await this.userService.ensureUserExists(telegramUser.id.toString(), {
+                firstName: telegramUser.first_name,
+                lastName: telegramUser.last_name,
+                username: telegramUser.username,
+            });
+        } catch (error) {
+            this.logger.error('Error ensuring user exists:', error);
+            throw new Error('User registration failed');
         }
     }
 }

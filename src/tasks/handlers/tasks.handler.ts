@@ -7,6 +7,7 @@ import { BotLoggerService } from '../../bot/services/bot-logger.service';
 import { AiService } from '../../ai/ai.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InteractiveTaskHandler } from './interactive-task.handler';
+import { UserService } from '../../common/services/user.service';
 
 @Injectable()
 export class TasksHandler {
@@ -16,6 +17,7 @@ export class TasksHandler {
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
         private readonly interactiveTaskHandler: InteractiveTaskHandler,
+        private readonly userService: UserService,
     ) {}
 
     async handleAddTask(ctx: Context): Promise<void> {
@@ -37,15 +39,8 @@ export class TasksHandler {
         }
 
         try {
-            // Get user from database directly
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
-
-            if (!user) {
-                await ctx.reply("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.");
-                return;
-            }
+            // Ensure user exists before proceeding
+            await this.ensureUserExists(ctx, ctx.from.id.toString());
 
             // Use interactive task handler for better user experience
             await this.interactiveTaskHandler.handleTaskCreation(ctx, taskText);
@@ -63,13 +58,13 @@ export class TasksHandler {
         if (!ctx.from?.id) return;
 
         try {
-            // Get user from database directly
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
+            // Ensure user exists before proceeding
+            await this.ensureUserExists(ctx, ctx.from.id.toString());
 
+            // Get user data
+            const user = await this.userService.findByTelegramId(ctx.from.id.toString());
             if (!user) {
-                await ctx.reply("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.");
+                await ctx.reply("❌ Foydalanuvchi ma'lumotlarini olishda xatolik.");
                 return;
             }
 
@@ -139,13 +134,16 @@ export class TasksHandler {
         }
 
         try {
-            // Get user from database directly
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
+            // Ensure user exists before proceeding
+            const telegramUser = ctx.from;
+            if (!telegramUser) return;
 
+            await this.ensureUserExists(ctx, telegramUser.id.toString());
+
+            // Get user data for task creation
+            const user = await this.userService.findByTelegramId(telegramUser.id.toString());
             if (!user) {
-                await ctx.reply("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.");
+                await ctx.reply("❌ Foydalanuvchi ma'lumotlarini olishda xatolik.");
                 return;
             }
 
@@ -200,12 +198,13 @@ export class TasksHandler {
         }
 
         try {
-            const user = await this.prisma.user.findUnique({
-                where: { telegramId: BigInt(ctx.from.id) },
-            });
+            // Ensure user exists before proceeding
+            await this.ensureUserExists(ctx, ctx.from.id.toString());
 
+            // Get user data
+            const user = await this.userService.findByTelegramId(ctx.from.id.toString());
             if (!user) {
-                await ctx.reply("Iltimos, avval /start buyrug'i orqali ro'yxatdan o'ting.");
+                await ctx.reply("❌ Foydalanuvchi ma'lumotlarini olishda xatolik.");
                 return;
             }
 
@@ -245,6 +244,24 @@ export class TasksHandler {
             await ctx.reply(
                 "⚠️ Uzr, vazifani bajarishda xatolik yuz berdi. Qaytadan urinib ko'ring.",
             );
+        }
+    }
+
+    private async ensureUserExists(ctx: Context, userId: string): Promise<void> {
+        try {
+            const telegramUser = ctx.from;
+            if (!telegramUser) {
+                throw new Error('Telegram user data not available');
+            }
+
+            await this.userService.ensureUserExists(telegramUser.id.toString(), {
+                firstName: telegramUser.first_name,
+                lastName: telegramUser.last_name,
+                username: telegramUser.username,
+            });
+        } catch (error) {
+            this.logger.botError(ctx, error as Error);
+            throw new Error('User registration failed');
         }
     }
 

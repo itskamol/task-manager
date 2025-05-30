@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Context } from 'grammy';
-import { LoggerService } from 'src/common/services/logger.service';
+import { LoggerService } from '../../common/services/logger.service';
 
 @Injectable()
 export class BotLoggerService {

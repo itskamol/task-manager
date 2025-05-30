@@ -1,19 +1,24 @@
 import { Injectable, OnModuleInit, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
+import { conversations, ConversationFlavor } from '@grammyjs/conversations';
 import { BotLoggerService } from './bot-logger.service';
 import { BotCommandRegistryService } from './bot-command-registry.service';
 import { LoggerService } from '../../common/services/logger.service';
+import { ConversationHandlers, MyContext } from '../handlers/conversation.handler';
+import { MessageHandler } from '../handlers/message.handler';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnApplicationShutdown {
-    private readonly bot: Bot;
+    private readonly bot: Bot<MyContext>;
 
     constructor(
         private readonly configService: ConfigService,
         private readonly logger: BotLoggerService,
         private readonly commandRegistryService: BotCommandRegistryService,
         private readonly appLogger: LoggerService,
+        private readonly conversationHandlers: ConversationHandlers,
+        private readonly messageHandler: MessageHandler,
     ) {
         const token = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
 
@@ -26,7 +31,8 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
             throw new Error('TELEGRAM_BOT_TOKEN is not defined');
         }
 
-        this.bot = new Bot(token);
+        this.bot = new Bot<MyContext>(token);
+        this.setupConversations();
         this.setupErrorHandling();
         this.setupMetricsTracking();
     }
@@ -77,6 +83,33 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
                 throw error;
             }
+        });
+    }
+
+    private setupConversations(): void {
+        // Install conversations plugin
+        this.bot.use(conversations());
+
+        // Register named conversations
+        this.bot.use(this.conversationHandlers.createTaskConversation);
+
+        // Setup message handler for natural language processing
+        this.messageHandler.setupTextMessageHandler(this.bot);
+
+        // Setup callback handlers for conversation triggers
+        this.setupConversationTriggers();
+    }
+
+    private setupConversationTriggers(): void {
+        // Handle callback queries for starting conversations
+        this.bot.callbackQuery(/^start_task_conversation_/, async (ctx) => {
+            await ctx.answerCallbackQuery();
+            await ctx.conversation.enter('createTaskConversation');
+        });
+
+        // Handle /create_task command to start conversation
+        this.bot.command('create_task', async (ctx) => {
+            await ctx.conversation.enter('createTaskConversation');
         });
     }
 

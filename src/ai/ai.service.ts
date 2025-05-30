@@ -651,9 +651,9 @@ export class AiService {
 
             "entities" ichida quyidagilarni ajratishga harakat qil:
             - "actionPhrase": Vazifa yoki eslatmaning asosiy matni (masalan, "non olish", "prezentatsiya tayyorlash", "qo'ng'iroq qilish").
-            - "deadline": Agar sana va/yoki vaqt aniq aytilgan bo'lsa, uni ISO 8601 formatida (YYYY-MM-DDTHH:mm:ss) ko'rsat. Agar faqat sana bo'lsa, T00:00:00 ishlat. Nisbiy vaqtlarni (masalan, "ertaga", "2 soatdan keyin") ham shu formatga o'tkazishga harakat qil (hozirgi vaqtni YYYY-MM-DDTHH:mm:ss deb hisobla).
+            - "remindAt": Agar sana va/yoki vaqt aniq aytilgan bo'lsa, uni ISO 8601 formatida (YYYY-MM-DDTHH:mm:ss) ko'rsat. Agar faqat sana bo'lsa, T00:00:00 ishlat. Nisbiy vaqtlarni (masalan, "ertaga", "2 soatdan keyin") ham shu formatga o'tkazishga harakat qil (hozirgi vaqtni YYYY-MM-DDTHH:mm:ss deb hisobla).
             - "persoNames": Agar xabarda odam ismlari bo'lsa (masalan, "Alisher bilan uchrashuv").
-            - "location_names": Agar joy nomlari bo'lsa.
+            - "locationNames": Agar joy nomlari bo'lsa.
 
             Shuningdek, quyidagi boolean qiymatni ham qaytar:
             - "isInformationSufficient": Agar "CREATE_TASK" yoki "CREATE_REMINDER" maqsadi uchun asosiy ma'lumotlar (masalan, "actionPhrase") yetarli bo'lsa, 'true', aks holda 'false'.
@@ -669,7 +669,7 @@ export class AiService {
               "intent": "CREATE_TASK",
               "entities": {
                 "actionPhrase": "Alisher bilan uchrashish",
-                "deadline": "YYYY-MM-(ErtangiSana)T15:00:00", 
+                "remindAt": "YYYY-MM-(ErtangiSana)T15:00:00", 
                 "persoNames": ["Alisher"]
               },
               "isInformationSufficient": true,

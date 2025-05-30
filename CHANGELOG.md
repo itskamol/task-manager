@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced logging configuration for production environments
 - Log level changed from 'warn' to 'info' for better business insights
 
+## [1.0.1] - 2025-05-30
+
+### Changed
+- Production-ready logging and semantic versioning implementation
+
 ## [1.0.0] - 2025-05-30
 
 ### Added

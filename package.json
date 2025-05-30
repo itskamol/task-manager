@@ -1,6 +1,6 @@
 {
     "name": "gemini-ai-task-manager",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "AI-powered task management Telegram bot with Gemini integration",
     "author": "itskamol",
     "private": true,

@@ -63,7 +63,7 @@ export class TasksService {
         },
     ): Promise<Task> {
         const startTime = Date.now();
-        
+
         try {
             const task = await this.prisma.task.create({
                 data: {
@@ -80,7 +80,7 @@ export class TasksService {
                 title: task.title.substring(0, 50),
                 priority: task.priority,
                 hasDeadline: !!task.deadline,
-                estimatedTime: task.estimatedTime
+                estimatedTime: task.estimatedTime,
             });
 
             this.logger.logDatabaseOperation('CREATE', 'task', duration, true);
@@ -98,7 +98,7 @@ export class TasksService {
             return task;
         } catch (error) {
             const duration = Date.now() - startTime;
-            
+
             this.logger.logDatabaseOperation('CREATE', 'task', duration, false);
             this.logger.error('Failed to create task', error, { context: 'TasksService', userId });
             throw error;
@@ -107,7 +107,7 @@ export class TasksService {
 
     async getUserTasks(userId: string): Promise<Task[]> {
         const startTime = Date.now();
-        
+
         try {
             const tasks = await this.prisma.task.findMany({
                 where: { userId },
@@ -116,24 +116,27 @@ export class TasksService {
 
             const duration = Date.now() - startTime;
             this.logger.logDatabaseOperation('READ', 'task', duration, true);
-            
+
             this.logger.logUserAction('TASKS_RETRIEVED', userId, {
                 taskCount: tasks.length,
-                hasOverdueTasks: tasks.some(task => task.deadline && task.deadline < new Date())
+                hasOverdueTasks: tasks.some((task) => task.deadline && task.deadline < new Date()),
             });
 
             return tasks;
         } catch (error) {
             const duration = Date.now() - startTime;
             this.logger.logDatabaseOperation('READ', 'task', duration, false);
-            this.logger.error('Failed to retrieve user tasks', error, { context: 'TasksService', userId });
+            this.logger.error('Failed to retrieve user tasks', error, {
+                context: 'TasksService',
+                userId,
+            });
             throw error;
         }
     }
 
     async updateTask(taskId: string, userId: string, data: Partial<Task>): Promise<Task> {
         const startTime = Date.now();
-        
+
         try {
             const task = await this.prisma.task.update({
                 where: {
@@ -151,7 +154,7 @@ export class TasksService {
                 taskId: task.id,
                 updatedFields: Object.keys(data),
                 priority: task.priority,
-                status: task.status
+                status: task.status,
             });
 
             // Update reminder if deadline changed
@@ -173,10 +176,10 @@ export class TasksService {
                         data: {
                             taskId: task.id,
                             userId: task.userId,
-                            deadline: data.deadline
+                            deadline: data.deadline,
                         },
                         userId: task.userId,
-                        context: 'TasksService'
+                        context: 'TasksService',
                     });
                 }
             }
@@ -185,11 +188,11 @@ export class TasksService {
         } catch (error) {
             const duration = Date.now() - startTime;
             this.logger.logDatabaseOperation('UPDATE', 'task', duration, false);
-            this.logger.error('Failed to update task', error, { 
-                context: 'TasksService', 
-                taskId, 
+            this.logger.error('Failed to update task', error, {
+                context: 'TasksService',
+                taskId,
                 userId,
-                updateData: Object.keys(data)
+                updateData: Object.keys(data),
             });
             throw error;
         }
@@ -197,7 +200,7 @@ export class TasksService {
 
     async deleteTask(taskId: string, userId: string): Promise<Task> {
         const startTime = Date.now();
-        
+
         try {
             // Cancel any scheduled reminders first
             await this.scheduler.cancelReminder(taskId);
@@ -216,7 +219,7 @@ export class TasksService {
                 taskId: task.id,
                 title: task.title.substring(0, 50),
                 priority: task.priority,
-                wasCompleted: task.status === Status.DONE
+                wasCompleted: task.status === Status.DONE,
             });
 
             this.logger.logBusinessEvent({
@@ -224,20 +227,20 @@ export class TasksService {
                 data: {
                     taskId: task.id,
                     userId: task.userId,
-                    reason: 'TASK_DELETED'
+                    reason: 'TASK_DELETED',
                 },
                 userId: task.userId,
-                context: 'TasksService'
+                context: 'TasksService',
             });
 
             return task;
         } catch (error) {
             const duration = Date.now() - startTime;
             this.logger.logDatabaseOperation('DELETE', 'task', duration, false);
-            this.logger.error('Failed to delete task', error, { 
-                context: 'TasksService', 
-                taskId, 
-                userId 
+            this.logger.error('Failed to delete task', error, {
+                context: 'TasksService',
+                taskId,
+                userId,
             });
             throw error;
         }
@@ -245,7 +248,7 @@ export class TasksService {
 
     async getUpcomingTasks(userId: string): Promise<Task[]> {
         const startTime = Date.now();
-        
+
         try {
             const now = new Date();
             const tasks = await this.prisma.task.findMany({
@@ -266,16 +269,16 @@ export class TasksService {
 
             this.logger.logUserAction('UPCOMING_TASKS_RETRIEVED', userId, {
                 upcomingTaskCount: tasks.length,
-                nearestDeadline: tasks.length > 0 ? tasks[0].deadline : null
+                nearestDeadline: tasks.length > 0 ? tasks[0].deadline : null,
             });
 
             return tasks;
         } catch (error) {
             const duration = Date.now() - startTime;
             this.logger.logDatabaseOperation('READ', 'task', duration, false);
-            this.logger.error('Failed to retrieve upcoming tasks', error, { 
-                context: 'TasksService', 
-                userId 
+            this.logger.error('Failed to retrieve upcoming tasks', error, {
+                context: 'TasksService',
+                userId,
             });
             throw error;
         }

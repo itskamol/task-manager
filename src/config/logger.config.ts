@@ -57,7 +57,7 @@ if (NODE_ENV === 'production') {
             maxFiles: 5,
             format: winston.format.combine(timezoneFormat(), errorFormat(), winston.format.json()),
         }),
-        
+
         // Combined logs (info and above)
         new winston.transports.File({
             filename: 'logs/combined.log',
@@ -66,7 +66,7 @@ if (NODE_ENV === 'production') {
             maxFiles: 10,
             format: winston.format.combine(timezoneFormat(), errorFormat(), winston.format.json()),
         }),
-        
+
         // Application logs (warn and above)
         new winston.transports.File({
             filename: 'logs/app.log',

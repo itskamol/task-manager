@@ -106,7 +106,12 @@ export class LoggerService implements NestLoggerService {
     }
 
     // Database operation logging
-    logDatabaseOperation(operation: string, table: string, duration: number, success: boolean): void {
+    logDatabaseOperation(
+        operation: string,
+        table: string,
+        duration: number,
+        success: boolean,
+    ): void {
         this.logPerformance({
             operation: `DB_${operation.toUpperCase()}`,
             duration,
@@ -119,7 +124,11 @@ export class LoggerService implements NestLoggerService {
     }
 
     // Security event logging
-    logSecurityEvent(event: string, details: any, severity: 'low' | 'medium' | 'high' = 'medium'): void {
+    logSecurityEvent(
+        event: string,
+        details: any,
+        severity: 'low' | 'medium' | 'high' = 'medium',
+    ): void {
         const logMethod = severity === 'high' ? 'error' : severity === 'medium' ? 'warn' : 'info';
 
         this.logger[logMethod]('Security Event', {

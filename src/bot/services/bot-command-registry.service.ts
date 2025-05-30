@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Bot } from 'grammy';
-import { BotCommand, TelegramCommand } from '../../common/types/bot.types';
+import { BotCommand } from '../../common/types/bot.types';
 import { StartHandler } from '../handlers/start.handler';
 import { ContactHandler } from '../handlers/contact.handler';
 import { HelpHandler } from '../handlers/help.handler';

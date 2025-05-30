@@ -1,12 +1,15 @@
 import { WinstonModuleOptions } from 'nest-winston';
 import * as winston from 'winston';
-import * as moment from 'moment-timezone';
+import { format } from 'date-fns';
+import { toZonedTime, format as formatTz } from 'date-fns-tz';
 
 const TIMEZONE = 'Asia/Tashkent';
 const APP_NAME = 'TaskManager';
 
 const timezoneFormat = winston.format((info) => {
-    info.timestamp = moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
+    const now = new Date();
+    const zonedDate = toZonedTime(now, TIMEZONE);
+    info.timestamp = formatTz(zonedDate, 'yyyy-MM-dd HH:mm:ss', { timeZone: TIMEZONE });
     return info;
 });
 

@@ -1,24 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { DateService, ReportPeriod } from '../common/services/date.service';
 import { Status, Priority, Task } from '@prisma/client';
-import {
-    startOfDay,
-    endOfDay,
-    startOfWeek,
-    endOfWeek,
-    startOfMonth,
-    endOfMonth,
-    startOfQuarter,
-    endOfQuarter,
-    startOfYear,
-    endOfYear,
-    subDays,
-    subWeeks,
-    subMonths,
-    subQuarters,
-    subYears,
-} from 'date-fns';
+import { startOfDay, endOfDay, subDays, differenceInDays, differenceInHours } from 'date-fns';
 
 export interface ReportData {
     period: string;
@@ -52,11 +37,18 @@ export class ReportsService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly aiService: AiService,
+        private readonly dateService: DateService,
     ) {}
 
-    async getDailyReport(userId: string, date: Date = new Date()): Promise<ReportData> {
-        const startDate = startOfDay(date);
-        const endDate = endOfDay(date);
+    async getDailyReport(
+        userId: string,
+        date: Date = new Date(),
+        timezone?: string,
+    ): Promise<ReportData> {
+        const { start: startDate, end: endDate } = this.dateService.getReportDateRange(
+            'daily',
+            timezone,
+        );
 
         const tasks = await this.getTasksInPeriod(userId, startDate, endDate);
         const analytics = await this.calculateAnalytics(tasks, 'daily');
@@ -69,16 +61,22 @@ export class ReportsService {
         });
 
         return {
-            period: `Kunlik hisobot - ${date.toLocaleDateString('uz-UZ')}`,
+            period: `Kunlik hisobot - ${this.dateService.formatReportDate(date, timezone)}`,
             ...analytics,
             insights: aiInsights.insights,
             recommendations: aiInsights.recommendations,
         };
     }
 
-    async getWeeklyReport(userId: string, date: Date = new Date()): Promise<ReportData> {
-        const startDate = startOfWeek(date, { weekStartsOn: 1 }); // Monday start
-        const endDate = endOfWeek(date, { weekStartsOn: 1 });
+    async getWeeklyReport(
+        userId: string,
+        date: Date = new Date(),
+        timezone?: string,
+    ): Promise<ReportData> {
+        const { start: startDate, end: endDate } = this.dateService.getReportDateRange(
+            'weekly',
+            timezone,
+        );
 
         const tasks = await this.getTasksInPeriod(userId, startDate, endDate);
         const analytics = await this.calculateAnalytics(tasks, 'weekly');
@@ -91,16 +89,22 @@ export class ReportsService {
         });
 
         return {
-            period: `Haftalik hisobot - ${startDate.toLocaleDateString('uz-UZ')} - ${endDate.toLocaleDateString('uz-UZ')}`,
+            period: `Haftalik hisobot - ${this.dateService.formatReportDate(startDate, timezone)} - ${this.dateService.formatReportDate(endDate, timezone)}`,
             ...analytics,
             insights: aiInsights.insights,
             recommendations: aiInsights.recommendations,
         };
     }
 
-    async getMonthlyReport(userId: string, date: Date = new Date()): Promise<ReportData> {
-        const startDate = startOfMonth(date);
-        const endDate = endOfMonth(date);
+    async getMonthlyReport(
+        userId: string,
+        date: Date = new Date(),
+        timezone?: string,
+    ): Promise<ReportData> {
+        const { start: startDate, end: endDate } = this.dateService.getReportDateRange(
+            'monthly',
+            timezone,
+        );
 
         const tasks = await this.getTasksInPeriod(userId, startDate, endDate);
         const analytics = await this.calculateAnalytics(tasks, 'monthly');
@@ -113,16 +117,22 @@ export class ReportsService {
         });
 
         return {
-            period: `Oylik hisobot - ${date.toLocaleDateString('uz-UZ', { month: 'long', year: 'numeric' })}`,
+            period: `Oylik hisobot - ${this.dateService.formatReportDate(date, timezone)}`,
             ...analytics,
             insights: aiInsights.insights,
             recommendations: aiInsights.recommendations,
         };
     }
 
-    async getQuarterlyReport(userId: string, date: Date = new Date()): Promise<ReportData> {
-        const startDate = startOfQuarter(date);
-        const endDate = endOfQuarter(date);
+    async getQuarterlyReport(
+        userId: string,
+        date: Date = new Date(),
+        timezone?: string,
+    ): Promise<ReportData> {
+        const { start: startDate, end: endDate } = this.dateService.getReportDateRange(
+            'quarterly',
+            timezone,
+        );
 
         const tasks = await this.getTasksInPeriod(userId, startDate, endDate);
         const analytics = await this.calculateAnalytics(tasks, 'quarterly');
@@ -144,9 +154,15 @@ export class ReportsService {
         };
     }
 
-    async getYearlyReport(userId: string, date: Date = new Date()): Promise<ReportData> {
-        const startDate = startOfYear(date);
-        const endDate = endOfYear(date);
+    async getYearlyReport(
+        userId: string,
+        date: Date = new Date(),
+        timezone?: string,
+    ): Promise<ReportData> {
+        const { start: startDate, end: endDate } = this.dateService.getReportDateRange(
+            'yearly',
+            timezone,
+        );
 
         const tasks = await this.getTasksInPeriod(userId, startDate, endDate);
         const analytics = await this.calculateAnalytics(tasks, 'yearly');

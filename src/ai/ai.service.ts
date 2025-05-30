@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { LoggerService } from '../common/services/logger.service';
 import { Priority, Task } from '@prisma/client';
-import * as moment from 'moment-timezone';
+import { addTimeInTimezone } from '../tasks/utils/time.utils';
 
 /**
  * Enhanced AI Service with Gemini API Integration
@@ -175,7 +175,7 @@ export class AiService {
 
             // Use task timezone for deadline calculation
             const taskTimezone = task.timezone || 'Asia/Tashkent';
-            const deadline = moment().tz(taskTimezone).add(hours, 'hours').toDate();
+            const deadline = addTimeInTimezone(new Date(), hours, 'hours', taskTimezone);
             console.log(
                 `Calculated deadline: ${deadline.toISOString()} for timezone: ${taskTimezone}`,
             );
@@ -191,16 +191,16 @@ export class AiService {
 
         if (task.priority === Priority.HIGH) {
             // High priority: 24 hours from now
-            return moment().tz(taskTimezone).add(24, 'hours').toDate();
+            return addTimeInTimezone(new Date(), 24, 'hours', taskTimezone);
         }
 
         if (task.priority === Priority.MEDIUM) {
             // Medium priority: 3 days from now
-            return moment().tz(taskTimezone).add(3, 'days').toDate();
+            return addTimeInTimezone(new Date(), 3, 'days', taskTimezone);
         }
 
         // Low priority: 1 week from now
-        return moment().tz(taskTimezone).add(1, 'week').toDate();
+        return addTimeInTimezone(new Date(), 1, 'weeks', taskTimezone);
     }
 
     async estimateTaskDuration(title: string, description?: string): Promise<number | null> {
